@@ -22,6 +22,9 @@ const userSchema = new mongoose.Schema(
     status: { type: String, enum: Object.values(USER_STATUS), default: USER_STATUS.ACTIVE },
     maxDevices: { type: Number, default: DEFAULT_MAX_DEVICES, min: 1, max: 10 },
     devices: { type: [deviceSchema], default: [] },
+    // Last self-service device swap at login (rate-limited by DEVICE_REPLACE_COOLDOWN_DAYS).
+    lastDeviceReplaceAt: { type: Date, default: null },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true, collection: 'users' },
 );

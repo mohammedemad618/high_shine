@@ -13,6 +13,8 @@ export const config = {
   ffmpegPath: process.env.FFMPEG_PATH || 'ffmpeg',
   ffprobePath: process.env.FFPROBE_PATH || 'ffprobe',
   x264Preset: process.env.X264_PRESET || 'veryfast',
+  // Unix nice value for FFmpeg (0 = normal priority); keeps encodes from starving the API and other sites.
+  ffmpegNice: Number(process.env.FFMPEG_NICE ?? 10),
   // How often transcode progress is written to the lesson document.
   progressIntervalMs: 5000,
 };

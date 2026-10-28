@@ -1,0 +1,43 @@
+.doc {
+  max-width: 52rem;
+  margin-inline: auto;
+  padding: 2rem 1.75rem 2.25rem;
+}
+
+.head {
+  padding-bottom: 1rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.head p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.title {
+  font-size: 1.6rem;
+  margin-bottom: 0.25rem;
+}
+
+.doc h2 {
+  font-size: 1.15rem;
+  margin: 1.75rem 0 0.5rem;
+}
+
+.doc p {
+  margin: 0 0 0.75rem;
+}
+
+.doc ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+  padding-inline-start: 1.25rem;
+}
+
+@media (max-width: 600px) {
+  .doc {
+    padding: 1.5rem 1.1rem 1.75rem;
+  }
+}

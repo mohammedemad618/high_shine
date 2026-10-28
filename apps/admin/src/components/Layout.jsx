@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { logout } from '../api/client.js';
 import { useSession } from '../api/hooks.js';
+import { hasActiveUploads } from '../upload/uploader.js';
 import UploadPanel from './UploadPanel.jsx';
 
 const TEACHER_LINKS = [{ to: '/courses', label: 'كورساتي' }];
@@ -37,7 +38,15 @@ export default function Layout() {
         <div className="sidebar-footer">
           <div className="user-name">{user?.name}</div>
           <div className="user-role">{isAdmin ? 'مدير' : 'مدرّس'}</div>
-          <button type="button" className="btn btn-sm btn-ghost" onClick={() => logout()}>
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            onClick={() => {
+              // Ending the session cancels the uploads running in this tab (see main.jsx).
+              if (hasActiveUploads() && !window.confirm('هناك رفع جارٍ وسيتوقف إذا سجّلت الخروج. هل تريد تسجيل الخروج؟')) return;
+              logout();
+            }}
+          >
             تسجيل الخروج
           </button>
         </div>

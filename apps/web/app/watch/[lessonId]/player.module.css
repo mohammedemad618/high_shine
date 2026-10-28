@@ -258,6 +258,29 @@
   gap: 1rem;
 }
 
+.attachmentLink {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.attachmentLink:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.attachmentLink:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.attachmentError {
+  margin-top: 0.75rem;
+}
+
 /* ---------- lesson list ---------- */
 
 .sidebar {

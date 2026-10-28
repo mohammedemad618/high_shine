@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { COURSE_STATUS, LESSON_STATUS } from '@lp/shared';
+import { COURSE_STATUS, LESSON_STATUS, USER_STATUS } from '@lp/shared';
 
 export function Spinner({ label = 'جارٍ التحميل…' }) {
   return (
@@ -65,6 +65,23 @@ const COURSE_LABELS = {
 
 export function CourseStatusBadge({ status }) {
   return <span className={`badge badge-course-${status}`}>{COURSE_LABELS[status] || status}</span>;
+}
+
+// Also used for the status filter, so every status (including a student's self-deleted account) is listed.
+export const USER_STATUS_LABELS = {
+  [USER_STATUS.ACTIVE]: 'فعّال',
+  [USER_STATUS.SUSPENDED]: 'موقوف',
+  [USER_STATUS.DELETED]: 'محذوف',
+};
+
+const USER_TONES = {
+  [USER_STATUS.ACTIVE]: 'ready',
+  [USER_STATUS.SUSPENDED]: 'failed',
+  [USER_STATUS.DELETED]: 'draft',
+};
+
+export function UserStatusBadge({ status }) {
+  return <span className={`badge badge-${USER_TONES[status] || 'draft'}`}>{USER_STATUS_LABELS[status] || status}</span>;
 }
 
 export function Modal({ title, onClose, children, wide = false }) {

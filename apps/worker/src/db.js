@@ -1,5 +1,4 @@
 import { MongoClient, ObjectId } from 'mongodb';
-import { LESSON_STATUS } from '@lp/shared';
 
 // The worker uses the plain driver on the API's collections (no Mongoose schemas duplicated here).
 let client;
@@ -28,12 +27,12 @@ export async function updateLesson(lessonId, set) {
   await collections().lessons.updateOne({ _id: toId(lessonId) }, { $set: { ...set, updatedAt: new Date() } });
 }
 
-/** Same calculation as the API's refreshCourseStats: count and total duration of ready lessons. */
+/** Same calculation as the API's refreshCourseStats: count and total duration of playable lessons (with HLS). */
 export async function refreshCourseStats(courseId) {
   const { lessons, courses } = collections();
   const [agg] = await lessons
     .aggregate([
-      { $match: { courseId: toId(courseId), status: LESSON_STATUS.READY } },
+      { $match: { courseId: toId(courseId), 'video.hlsPath': { $ne: null } } },
       { $group: { _id: null, count: { $sum: 1 }, duration: { $sum: { $ifNull: ['$video.durationSec', 0] } } } },
     ])
     .toArray();

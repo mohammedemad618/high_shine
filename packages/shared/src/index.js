@@ -10,6 +10,8 @@ export const ROLES = Object.freeze({
 export const USER_STATUS = Object.freeze({
   ACTIVE: 'active',
   SUSPENDED: 'suspended',
+  // Set only by the student's own account deletion; the record stays (anonymized) for enrollment accounting.
+  DELETED: 'deleted',
 });
 
 export const COURSE_STATUS = Object.freeze({
@@ -52,8 +54,10 @@ export const ERROR_CODES = Object.freeze({
   PHONE_TAKEN: 'PHONE_TAKEN',
   ACCOUNT_SUSPENDED: 'ACCOUNT_SUSPENDED',
   DEVICE_LIMIT: 'DEVICE_LIMIT',
+  DEVICE_REPLACE_LOCKED: 'DEVICE_REPLACE_LOCKED',
   DEVICE_REVOKED: 'DEVICE_REVOKED',
   REFRESH_INVALID: 'REFRESH_INVALID',
+  WRONG_PASSWORD: 'WRONG_PASSWORD',
 
   NOT_ENROLLED: 'NOT_ENROLLED',
   LESSON_NOT_READY: 'LESSON_NOT_READY',
@@ -83,9 +87,11 @@ export const ERROR_MESSAGES_AR = Object.freeze({
   INVALID_CREDENTIALS: 'رقم الهاتف أو كلمة المرور غير صحيحة',
   PHONE_TAKEN: 'رقم الهاتف مسجّل مسبقاً',
   ACCOUNT_SUSPENDED: 'الحساب موقوف، تواصل مع الإدارة',
-  DEVICE_LIMIT: 'وصلت إلى الحد الأقصى للأجهزة. تواصل مع الإدارة لمسح جهاز قديم',
+  DEVICE_LIMIT: 'وصلت إلى الحد الأقصى للأجهزة المسموح بها لحسابك',
+  DEVICE_REPLACE_LOCKED: 'استبدلت جهازاً مؤخراً. يمكنك الاستبدال مرة أخرى لاحقاً أو التواصل مع الدعم',
   DEVICE_REVOKED: 'أُزيل هذا الجهاز من حسابك، سجّل الدخول من جديد',
   REFRESH_INVALID: 'انتهت الجلسة، أعد تسجيل الدخول',
+  WRONG_PASSWORD: 'كلمة المرور الحالية غير صحيحة',
   NOT_ENROLLED: 'يجب تفعيل الكورس لمشاهدة هذا الدرس',
   LESSON_NOT_READY: 'الدرس قيد المعالجة',
   CONCURRENT_PLAYBACK: 'الحساب يشاهد من جهاز آخر الآن',
@@ -118,4 +124,21 @@ export const KEY_URI_PLACEHOLDER = 'KEY_URI';
 
 export function errorMessage(code) {
   return ERROR_MESSAGES_AR[code] || ERROR_MESSAGES_AR.INTERNAL;
+}
+
+/** Arabic-Indic (٠-٩) and Persian (۰-۹) digits → 0-9, so a number typed on an Arabic keyboard is accepted. */
+export function toLatinDigits(value) {
+  return String(value ?? '').replace(/[٠-٩۰-۹]/g, (d) => String(d.charCodeAt(0) & 0xf));
+}
+
+/**
+ * One stored form per phone: Iraqi mobiles become 07XXXXXXXXX whether typed as 07…, 7…, 9647…, +9647… or 009647…,
+ * so the same student can never end up with two accounts. Other numbers keep their digits (with + if given).
+ */
+export function normalizePhone(value) {
+  const raw = toLatinDigits(value).replace(/[\s\-().]/g, '');
+  const digits = raw.replace(/^\+/, '').replace(/^00/, '');
+  const iraqi = digits.match(/^(?:964|0)?(7\d{9})$/);
+  if (iraqi) return `0${iraqi[1]}`;
+  return raw.startsWith('+') || raw.startsWith('00') ? `+${digits}` : digits;
 }

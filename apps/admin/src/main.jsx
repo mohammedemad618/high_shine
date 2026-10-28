@@ -4,7 +4,8 @@ import { BrowserRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { bootstrapSession, session } from './api/client.js';
 import { keys } from './api/hooks.js';
-import { onUploadDone, resetUploads } from './upload/uploader.js';
+import { onUploadCancelled, onUploadDone, resetUploads } from './upload/uploader.js';
+import { syncCancelledUpload } from './pages/course/courseCache.js';
 import App from './App.jsx';
 import './styles.css';
 
@@ -28,6 +29,11 @@ session.onEnd(() => {
 // A finished upload moves the lesson to "queued": refetch the course so the editor starts polling its status.
 onUploadDone((item) => {
   queryClient.invalidateQueries({ queryKey: keys.course(item.courseId) });
+});
+
+// A cancelled upload puts the lesson back to ready / failed / draft on the server: show that instead of "uploading".
+onUploadCancelled((item) => {
+  syncCancelledUpload(queryClient, item);
 });
 
 bootstrapSession();

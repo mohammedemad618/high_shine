@@ -10,6 +10,10 @@ import SectionsBoard from './SectionsBoard.jsx';
 import UploadVideosModal from './UploadVideosModal.jsx';
 import { setCourseSummary } from './courseCache.js';
 
+// Hiding only takes the course out of the public catalogue (only drafts are closed to students).
+const HIDE_CONFIRM =
+  'إخفاء الكورس؟ سيختفي من قائمة الكورسات العامة فقط: يبقى الطلاب المشتركون قادرين على مشاهدته، وتبقى أكواد التفعيل الخاصة به صالحة.';
+
 export default function CourseEditorPage() {
   const { id } = useParams();
   const qc = useQueryClient();
@@ -50,7 +54,7 @@ export default function CourseEditorPage() {
             className={`btn ${published ? '' : 'btn-primary'}`}
             disabled={publish.isPending}
             onClick={() => {
-              if (published && !window.confirm('إخفاء الكورس؟ لن يظهر للطلاب الجدد في القائمة.')) return;
+              if (published && !window.confirm(HIDE_CONFIRM)) return;
               publish.mutate();
             }}
           >

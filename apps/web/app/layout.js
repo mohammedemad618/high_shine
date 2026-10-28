@@ -1,4 +1,5 @@
 import { AuthProvider } from '@/components/AuthProvider';
+import Footer from '@/components/Footer';
 import Header from '@/components/Header';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/config';
 import './globals.css';
@@ -30,11 +31,7 @@ export default function RootLayout({ children }) {
         <AuthProvider>
           <Header />
           <main>{children}</main>
-          <footer className="site-footer">
-            <div className="container">
-              © {new Date().getFullYear()} {SITE_NAME}
-            </div>
-          </footer>
+          <Footer />
         </AuthProvider>
       </body>
     </html>

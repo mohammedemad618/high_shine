@@ -16,26 +16,68 @@ async function issueTokens(user, deviceId) {
   return { user: user.toPublic(), accessToken: signAccessToken(user, deviceId), refreshToken };
 }
 
-/**
- * Binds the device to the account, or refreshes lastSeenAt if it is already bound.
- * The size check and the push happen in one atomic update so two parallel logins cannot exceed the limit.
- */
-async function bindDevice(user, { deviceId, deviceName, platform }) {
-  const now = new Date();
-  const touch = { 'devices.$.lastSeenAt': now };
-  if (deviceName) touch['devices.$.name'] = deviceName;
-  const seen = await User.updateOne({ _id: user._id, 'devices.deviceId': deviceId }, { $set: touch });
-  if (seen.matchedCount) return;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
+// The size check and the push happen in one atomic update so two parallel logins cannot exceed the limit.
+async function pushDevice(userId, { deviceId, deviceName, platform }, now) {
   const added = await User.updateOne(
     {
-      _id: user._id,
+      _id: userId,
       'devices.deviceId': { $ne: deviceId },
       $expr: { $lt: [{ $size: '$devices' }, '$maxDevices'] },
     },
     { $push: { devices: { deviceId, name: deviceName, platform, addedAt: now, lastSeenAt: now } } },
   );
-  if (!added.modifiedCount) throw AppError.forbidden(ERROR_CODES.DEVICE_LIMIT);
+  return added.modifiedCount > 0;
+}
+
+/**
+ * Binds the device to the account, or refreshes lastSeenAt if it is already bound.
+ * At the limit the client gets DEVICE_LIMIT with { canReplace, nextReplaceAt, replaceTarget }; it may then retry
+ * with replaceDevice, which signs out the least recently used device. That self-service swap is allowed once per
+ * DEVICE_REPLACE_COOLDOWN_DAYS so an account cannot rotate between many people.
+ */
+async function bindDevice(user, { deviceId, deviceName, platform, replaceDevice }) {
+  const now = new Date();
+  const touch = { 'devices.$.lastSeenAt': now };
+  if (deviceName) touch['devices.$.name'] = deviceName;
+  const seen = await User.updateOne({ _id: user._id, 'devices.deviceId': deviceId }, { $set: touch });
+  if (seen.matchedCount) return;
+  if (await pushDevice(user._id, { deviceId, deviceName, platform }, now)) return;
+
+  const current = await User.findById(user._id, 'devices lastDeviceReplaceAt');
+  const cooldownStart = new Date(now.getTime() - env.deviceReplaceCooldownDays * DAY_MS);
+  const nextReplaceAt = current.lastDeviceReplaceAt > cooldownStart
+    ? new Date(current.lastDeviceReplaceAt.getTime() + env.deviceReplaceCooldownDays * DAY_MS)
+    : null;
+  const oldest = [...current.devices].sort((a, b) => a.lastSeenAt - b.lastSeenAt)[0];
+
+  if (!replaceDevice) {
+    throw new AppError(403, ERROR_CODES.DEVICE_LIMIT, undefined, {
+      canReplace: !nextReplaceAt && Boolean(oldest),
+      nextReplaceAt,
+      replaceTarget: oldest ? { name: oldest.name, platform: oldest.platform, lastSeenAt: oldest.lastSeenAt } : null,
+    });
+  }
+  if (nextReplaceAt || !oldest) throw new AppError(403, ERROR_CODES.DEVICE_REPLACE_LOCKED, undefined, { nextReplaceAt });
+
+  // Claim the swap atomically: a parallel login cannot use the same cooldown window twice.
+  const swapped = await User.updateOne(
+    {
+      _id: user._id,
+      'devices.deviceId': oldest.deviceId,
+      $or: [{ lastDeviceReplaceAt: null }, { lastDeviceReplaceAt: { $lte: cooldownStart } }],
+    },
+    { $pull: { devices: { deviceId: oldest.deviceId } }, $set: { lastDeviceReplaceAt: now } },
+  );
+  if (!swapped.modifiedCount) throw AppError.forbidden(ERROR_CODES.DEVICE_LIMIT);
+  await Promise.all([
+    RefreshToken.updateMany({ userId: user._id, deviceId: oldest.deviceId, revokedAt: null }, { $set: { revokedAt: now } }),
+    PlaybackSession.deleteMany({ userId: user._id, deviceId: oldest.deviceId }),
+  ]);
+  if (!(await pushDevice(user._id, { deviceId, deviceName, platform }, now))) {
+    throw AppError.forbidden(ERROR_CODES.DEVICE_LIMIT);
+  }
 }
 
 export async function register(input) {
@@ -54,7 +96,7 @@ export async function register(input) {
 export async function login(input) {
   const user = await User.findOne({ phone: input.phone }).select('+passwordHash');
   // Same error for unknown phone and wrong password.
-  if (!user || !(await verifyPassword(input.password, user.passwordHash))) {
+  if (!user || user.status === USER_STATUS.DELETED || !(await verifyPassword(input.password, user.passwordHash))) {
     throw AppError.unauthorized(ERROR_CODES.INVALID_CREDENTIALS);
   }
   if (user.status !== USER_STATUS.ACTIVE) throw AppError.forbidden(ERROR_CODES.ACCOUNT_SUSPENDED);

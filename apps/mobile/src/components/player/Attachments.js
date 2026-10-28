@@ -1,17 +1,29 @@
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import { getAttachmentLink } from '../../api/endpoints';
+import { messageFor } from '../../api/errors';
 import { colors, formatSize, radius, spacing } from '../../theme';
 import { Icon, T } from '../ui';
 
-/** Lesson PDFs. `url` is a signed link valid until the playback token expires. */
-export function Attachments({ items }) {
+/**
+ * Lesson PDFs. A tap asks the server for a link valid a few minutes; the file it serves carries the
+ * student's watermark, so a shared copy is traceable.
+ */
+export function Attachments({ lessonId, items }) {
+  const [opening, setOpening] = useState(null);
   if (!items?.length) return null;
 
   async function open(item) {
+    if (opening) return;
+    setOpening(item.id);
     try {
-      await WebBrowser.openBrowserAsync(item.url);
-    } catch {
-      Alert.alert('', 'تعذّر فتح الملف');
+      const { url } = await getAttachmentLink(lessonId, item.id);
+      await WebBrowser.openBrowserAsync(url);
+    } catch (err) {
+      Alert.alert('', err?.status ? messageFor(err) : 'تعذّر فتح الملف');
+    } finally {
+      setOpening(null);
     }
   }
 
@@ -25,6 +37,7 @@ export function Attachments({ items }) {
           key={a.id}
           accessibilityRole="button"
           accessibilityLabel={`فتح ${a.name}`}
+          accessibilityState={{ busy: opening === a.id }}
           onPress={() => open(a)}
           style={({ pressed }) => [styles.row, pressed && styles.pressed]}
         >
@@ -41,7 +54,11 @@ export function Attachments({ items }) {
               </T>
             ) : null}
           </View>
-          <Icon name="download" size={20} color={colors.primary} />
+          {opening === a.id ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : (
+            <Icon name="download" size={20} color={colors.primary} />
+          )}
         </Pressable>
       ))}
     </View>

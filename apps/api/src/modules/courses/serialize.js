@@ -45,6 +45,8 @@ export function lessonSummary(lesson, { staff = false } = {}) {
       height: lesson.video?.height ?? null,
       renditions: lesson.video?.renditions ?? [],
       hasSource: Boolean(lesson.video?.sourcePath),
+      // Students can watch a finished version even while a replacement uploads or encodes.
+      live: Boolean(lesson.video?.hlsPath),
     },
     attachments: (lesson.attachments || []).map((a) => ({ id: String(a._id), name: a.name, size: a.size })),
   };

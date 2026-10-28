@@ -45,3 +45,8 @@ function decodeSlug(slug) {
 export async function fetchCourse(slug) {
   return publicGet(`/courses/${encodeURIComponent(decodeSlug(slug))}`);
 }
+
+/** { supportWhatsapp, privacyUrl, termsUrl, deviceReplaceCooldownDays }, cached as long as the API allows (5 min). */
+export async function fetchAppConfig() {
+  return publicGet('/app-config', { revalidate: 300 });
+}

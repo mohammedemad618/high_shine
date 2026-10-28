@@ -29,3 +29,71 @@
   text-align: center;
   font-size: 0.95rem;
 }
+
+.consent {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ---------- device limit ---------- */
+
+.notice {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  font-size: 0.95rem;
+}
+
+.notice p {
+  margin: 0;
+}
+
+.noticeLocked {
+  background: var(--warning-soft);
+}
+
+.device {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.deviceName {
+  font-weight: 600;
+}
+
+/* ---------- forgot password ---------- */
+
+.forgot {
+  font-size: 0.92rem;
+  text-align: center;
+}
+
+.forgot summary {
+  display: inline-block;
+  color: var(--primary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.forgot summary::-webkit-details-marker {
+  display: none;
+}
+
+.forgot summary:hover {
+  text-decoration: underline;
+}
+
+.forgot p {
+  margin: 0.6rem 0 0;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: var(--surface-2);
+  text-align: start;
+}

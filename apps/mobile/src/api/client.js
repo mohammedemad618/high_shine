@@ -1,7 +1,10 @@
 import { ERROR_CODES } from '@lp/shared';
 import { useAuth } from '../store/auth';
 
-// EXPO_PUBLIC_* vars are inlined at bundle time. 10.0.2.2 is the host machine from the Android emulator.
+// EXPO_PUBLIC_* vars are inlined at bundle time (eas.json sets them per build profile). The 10.0.2.2 fallback
+// (the host machine from the Android emulator) is for development only: a release without the variable fails
+// loudly at start-up instead of shipping an app that cannot reach the server.
+if (!process.env.EXPO_PUBLIC_API_URL && !__DEV__) throw new Error('EXPO_PUBLIC_API_URL is not set for this build');
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:4000/api/v1').replace(/\/+$/, '');
 
 const REQUEST_TIMEOUT_MS = 20000;

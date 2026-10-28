@@ -30,10 +30,12 @@ export function useMyCourses() {
 }
 
 const TERMINAL = [LESSON_STATUS.READY, LESSON_STATUS.FAILED, LESSON_STATUS.DRAFT];
+// 404 (lesson deleted), 403…: asking again won't help. Network/5xx errors are transient, so polling goes on.
+const isClientError = (err) => err?.status >= 400 && err?.status < 500;
 
 /**
- * Polls GET /lessons/:id/status every 3 s while `enabled`, until the lesson is ready/failed.
- * When it reaches a final state the course is refetched so the editor shows the new data.
+ * Polls GET /lessons/:id/status every 3 s while `enabled`, until the lesson is ready/failed or the request fails
+ * with a client error. Either way the course is then refetched so the editor shows the new data (or drops the lesson).
  */
 export function useLessonStatus(lessonId, courseId, enabled) {
   const qc = useQueryClient();
@@ -42,15 +44,16 @@ export function useLessonStatus(lessonId, courseId, enabled) {
     queryFn: () => api(`/lessons/${lessonId}/status`),
     enabled: Boolean(enabled && lessonId),
     staleTime: 0, // re-enabling (reprocess, new upload) must fetch instead of trusting an old "ready"
-    refetchInterval: (q) => (TERMINAL.includes(q.state.data?.status) ? false : 3000),
+    refetchInterval: (q) => (TERMINAL.includes(q.state.data?.status) || isClientError(q.state.error) ? false : 3000),
     refetchIntervalInBackground: true,
   });
   const status = query.data?.status;
+  const gone = isClientError(query.error);
   useEffect(() => {
-    if (enabled && courseId && (status === LESSON_STATUS.READY || status === LESSON_STATUS.FAILED)) {
+    if (enabled && courseId && (gone || status === LESSON_STATUS.READY || status === LESSON_STATUS.FAILED)) {
       qc.invalidateQueries({ queryKey: keys.course(courseId) });
       qc.invalidateQueries({ queryKey: keys.myCourses });
     }
-  }, [enabled, status, courseId, qc]);
+  }, [enabled, status, gone, courseId, qc]);
   return query.data;
 }

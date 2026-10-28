@@ -11,7 +11,7 @@ function bearer(req) {
 async function loadUser(token) {
   const payload = verifyAccessToken(token);
   const user = await User.findById(payload.sub);
-  if (!user) throw AppError.unauthorized();
+  if (!user || user.status === USER_STATUS.DELETED) throw AppError.unauthorized();
   if (user.status !== USER_STATUS.ACTIVE) throw AppError.forbidden(ERROR_CODES.ACCOUNT_SUSPENDED);
   // An admin may clear a student's devices; the old access token dies with them, not 15 minutes later.
   if (!user.devices.some((d) => d.deviceId === payload.did)) {

@@ -4,13 +4,17 @@ import { useQuery } from '@tanstack/react-query';
 import { ROLES } from '@lp/shared';
 import { api } from '../../api/client.js';
 import { keys } from '../../api/hooks.js';
-import { EmptyState, ErrorBox, Pagination, Spinner } from '../../components/ui.jsx';
+import { EmptyState, ErrorBox, Pagination, Spinner, USER_STATUS_LABELS, UserStatusBadge } from '../../components/ui.jsx';
 import { fmtDate } from '../../lib/format.js';
 
+// Empty values stay out of the URL.
+const withoutEmpty = (params) => Object.fromEntries(Object.entries(params).filter(([, v]) => v));
+
 export default function StudentsPage() {
-  // Search and page live in the URL so "back" from a student returns to the same list.
+  // Search, status filter and page live in the URL so "back" from a student returns to the same list.
   const [params, setParams] = useSearchParams();
   const q = params.get('q') || '';
+  const status = params.get('status') || '';
   const page = Number(params.get('page')) || 1;
   const [input, setInput] = useState(q);
 
@@ -19,18 +23,18 @@ export default function StudentsPage() {
   // Debounced search.
   useEffect(() => {
     if (input.trim() === q) return undefined;
-    const t = setTimeout(() => setParams(input.trim() ? { q: input.trim() } : {}, { replace: true }), 400);
+    const t = setTimeout(() => setParams(withoutEmpty({ q: input.trim(), status }), { replace: true }), 400);
     return () => clearTimeout(t);
-  }, [input, q, setParams]);
+  }, [input, q, status, setParams]);
 
-  const query = { role: ROLES.STUDENT, q: q || undefined, page, limit: 20 };
+  const query = { role: ROLES.STUDENT, status: status || undefined, q: q || undefined, page, limit: 20 };
   const list = useQuery({
     queryKey: keys.users(query),
     queryFn: () => api('/admin/users', { query }),
     placeholderData: (prev) => prev,
   });
 
-  const goTo = (p) => setParams({ ...(q ? { q } : {}), page: String(p) });
+  const goTo = (p) => setParams(withoutEmpty({ q, status, page: String(p) }));
 
   return (
     <div className="page">
@@ -38,13 +42,23 @@ export default function StudentsPage() {
         <h1>الطلاب</h1>
         {list.data && <span className="muted">{list.data.total} طالب</span>}
       </div>
-      <input
-        className="search"
-        type="search"
-        placeholder="ابحث بالاسم أو رقم الهاتف…"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-      />
+      <div className="row-between">
+        <input
+          className="search"
+          type="search"
+          placeholder="ابحث بالاسم أو رقم الهاتف…"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+        />
+        <select value={status} onChange={(e) => setParams(withoutEmpty({ q, status: e.target.value }))} aria-label="تصفية حسب الحالة">
+          <option value="">كل الحالات</option>
+          {Object.entries(USER_STATUS_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </div>
       {list.isPending && <Spinner />}
       <ErrorBox error={list.error} onRetry={() => list.refetch()} />
       {list.data && !list.data.items.length && <EmptyState>لا توجد نتائج.</EmptyState>}
@@ -67,9 +81,7 @@ export default function StudentsPage() {
                   <td>{s.name}</td>
                   <td dir="ltr" className="ltr-cell">{s.phone}</td>
                   <td>
-                    <span className={`badge ${s.status === 'active' ? 'badge-ready' : 'badge-failed'}`}>
-                      {s.status === 'active' ? 'فعّال' : 'موقوف'}
-                    </span>
+                    <UserStatusBadge status={s.status} />
                   </td>
                   <td>
                     {s.devices.length}/{s.maxDevices}

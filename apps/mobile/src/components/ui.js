@@ -45,16 +45,15 @@ export function Button({ title, onPress, loading, disabled, variant = 'primary',
         style,
       ]}
     >
-      {loading ? (
-        <ActivityIndicator color={v.fg} />
-      ) : (
-        <View style={styles.buttonInner}>
-          {icon ? <Icon name={icon} size={18} color={v.fg} /> : null}
-          <T weight="semibold" size={size === 'md' ? 15 : 16} color={v.fg}>
-            {title}
-          </T>
-        </View>
-      )}
+      {/* The label stays mounted under the spinner, on one line: after a re-layout Android could wrap the
+          Arabic label's last word onto a second line that the button then cut off. */}
+      <View style={[styles.buttonInner, loading && styles.hidden]}>
+        {icon ? <Icon name={icon} size={18} color={v.fg} /> : null}
+        <T weight="semibold" size={size === 'md' ? 15 : 16} color={v.fg} numberOfLines={1}>
+          {title}
+        </T>
+      </View>
+      {loading ? <ActivityIndicator color={v.fg} style={styles.spinner} /> : null}
     </Pressable>
   );
 }
@@ -285,6 +284,8 @@ const styles = StyleSheet.create({
   },
   buttonMd: { minHeight: 46, borderRadius: radius.md },
   buttonInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  hidden: { opacity: 0 },
+  spinner: { position: 'absolute' },
 
   field: { gap: spacing.sm },
   // Focus only changes colours. Adding shadow props on focus makes Android re-create the native view,

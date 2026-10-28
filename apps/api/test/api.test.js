@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LESSON_STATUS } from '@lp/shared';
@@ -207,7 +208,12 @@ describe('courses, lessons, codes, playback', () => {
     await MediaKey.create({ lessonId, key, iv: '00000000000000000000000000000001' });
     await Lesson.updateOne(
       { _id: lessonId },
-      { status: LESSON_STATUS.READY, 'video.durationSec': 100, 'video.renditions': [{ name: '360p', height: 360 }] },
+      {
+        status: LESSON_STATUS.READY,
+        'video.hlsPath': `hls/${lessonId}/master.m3u8`,
+        'video.durationSec': 100,
+        'video.renditions': [{ name: '360p', height: 360 }],
+      },
     );
 
     const outsider = await register(app, { phone: '07703000001', deviceId: 'outsider-device' });
@@ -280,6 +286,98 @@ describe('courses, lessons, codes, playback', () => {
     expect(stats.body.lessons[0].completions).toBe(1);
   });
 
+  it('hands playback over to another device and stops the old one', async () => {
+    const tablet = await login(app, { phone: student.user.phone, deviceId: 'second-device-xyz' });
+    const oldPlay = await request(app).post(`/api/v1/lessons/${lessonId}/playback`).set(auth(student.accessToken));
+    const oldToken = new URL(oldPlay.body.playbackUrl).searchParams.get('t');
+
+    // closing the lesson frees the account at once instead of after the idle timeout
+    const end = await request(app).delete(`/api/v1/lessons/${lessonId}/playback`).set(auth(student.accessToken));
+    expect(end.status).toBe(204);
+    const taken = await request(app).post(`/api/v1/lessons/${lessonId}/playback`).set(auth(tablet.body.accessToken));
+    expect(taken.status).toBe(200);
+
+    // while the tablet plays, the first device's pings and key requests are refused so its player stops
+    const ping = await request(app)
+      .post(`/api/v1/lessons/${lessonId}/progress`)
+      .set(auth(student.accessToken))
+      .send({ positionSec: 10, watchedDeltaSec: 5 });
+    expect(ping.status).toBe(409);
+    expect(ping.body.error.code).toBe('CONCURRENT_PLAYBACK');
+    expect((await request(app).get(`/api/v1/play/${lessonId}/key?t=${oldToken}`)).status).toBe(409);
+
+    await request(app).delete(`/api/v1/lessons/${lessonId}/playback`).set(auth(tablet.body.accessToken));
+  });
+
+  it('keeps a hidden course and a lesson being replaced open to enrolled students', async () => {
+    const hide = await request(app)
+      .post(`/api/v1/courses/${courseId}/publish`)
+      .set(auth(teacher.accessToken))
+      .send({ published: false });
+    expect(hide.body.course.status).toBe('hidden');
+    const catalogue = await request(app).get('/api/v1/courses');
+    expect(catalogue.body.items.some((c) => c.id === courseId)).toBe(false);
+
+    // a replacement upload is in progress: the finished version stays listed and playable
+    await Lesson.updateOne({ _id: lessonId }, { status: LESSON_STATUS.UPLOADING });
+    const details = await request(app).get(`/api/v1/courses/${courseId}`).set(auth(student.accessToken));
+    expect(details.status).toBe(200);
+    expect(details.body.sections.flatMap((s) => s.lessons).map((l) => l.id)).toContain(lessonId);
+    const play = await request(app).post(`/api/v1/lessons/${lessonId}/playback`).set(auth(student.accessToken));
+    expect(play.status).toBe(200);
+    await request(app).delete(`/api/v1/lessons/${lessonId}/playback`).set(auth(student.accessToken));
+
+    const outsider = await login(app, { phone: '07703000001', deviceId: 'outsider-device' });
+    expect((await request(app).get(`/api/v1/courses/${courseId}`).set(auth(outsider.body.accessToken))).status).toBe(404);
+
+    const staffView = await request(app).get(`/api/v1/courses/${courseId}`).set(auth(teacher.accessToken));
+    const row = staffView.body.sections.flatMap((s) => s.lessons).find((l) => l.id === lessonId);
+    expect(row.video.live).toBe(true);
+
+    await Lesson.updateOne({ _id: lessonId }, { status: LESSON_STATUS.READY });
+    await request(app).post(`/api/v1/courses/${courseId}/publish`).set(auth(teacher.accessToken)).send({ published: true });
+  });
+
+  it('hands out attachments through short-lived links, stamped with the viewer', async () => {
+    const blank = await PDFDocument.create();
+    blank.addPage([400, 600]);
+    const dir = path.join(mediaPaths.attachments, lessonId);
+    await fs.mkdir(dir, { recursive: true });
+    const bytes = await blank.save();
+    await fs.writeFile(path.join(dir, 'notes.pdf'), bytes);
+    await Lesson.updateOne(
+      { _id: lessonId },
+      { $push: { attachments: { name: 'ملزمة.pdf', path: `attachments/${lessonId}/notes.pdf`, size: bytes.length } } },
+    );
+
+    const play = await request(app).post(`/api/v1/lessons/${lessonId}/playback`).set(auth(student.accessToken));
+    const [attachment] = play.body.attachments;
+    expect(attachment.url).toBeUndefined(); // no long-lived link in the playback response any more
+    await request(app).delete(`/api/v1/lessons/${lessonId}/playback`).set(auth(student.accessToken));
+
+    const link = await request(app)
+      .post(`/api/v1/lessons/${lessonId}/attachments/${attachment.id}/link`)
+      .set(auth(student.accessToken));
+    expect(link.status).toBe(200);
+    expect(new Date(link.body.expiresAt) - Date.now()).toBeLessThanOrEqual(5 * 60 * 1000);
+    const fileUrl = new URL(link.body.url);
+    const file = await request(app).get(fileUrl.pathname + fileUrl.search).buffer(true).parse((res, cb) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => cb(null, Buffer.concat(chunks)));
+    });
+    expect(file.headers['content-type']).toMatch(/application\/pdf/);
+    expect(file.body.length).toBeGreaterThan(bytes.length); // the watermark was drawn in
+    expect((await PDFDocument.load(file.body)).getPageCount()).toBe(1);
+
+    const outsider = await login(app, { phone: '07703000001', deviceId: 'outsider-device' });
+    const refused = await request(app)
+      .post(`/api/v1/lessons/${lessonId}/attachments/${attachment.id}/link`)
+      .set(auth(outsider.body.accessToken));
+    expect(refused.status).toBe(403);
+    expect((await request(app).get(`${fileUrl.pathname}?t=forged`)).status).toBe(401);
+  });
+
   it('queues a reprocess and deletes a lesson with its files and key', async () => {
     const re = await request(app).post(`/api/v1/lessons/${lessonId}/reprocess`).set(auth(teacher.accessToken));
     expect(re.status).toBe(409); // no source file in this test
@@ -300,5 +398,83 @@ describe('courses, lessons, codes, playback', () => {
     expect(res.body.teachers).toBe(2);
     expect(res.body.codes.total).toBe(3);
     expect((await request(app).get('/api/v1/admin/stats').set(auth(teacher.accessToken))).status).toBe(403);
+  });
+});
+
+describe('account self-service', () => {
+  const loginWith = (body) => request(app).post('/api/v1/auth/login').send({ password: 'password123', platform: 'android', ...body });
+
+  it('stores one phone format, whatever the student types', async () => {
+    const reg = await register(app, { phone: '+964 770 400 0001', deviceId: 'phone-norm-0001' });
+    expect(reg.user.phone).toBe('07704000001');
+    expect((await loginWith({ phone: '٠٧٧٠٤٠٠٠٠٠١', deviceId: 'phone-norm-0001' })).status).toBe(200);
+    const dup = await request(app)
+      .post('/api/v1/auth/register')
+      .send({ name: 'طالب ثانٍ', phone: '009647704000001', password: 'password123', deviceId: 'phone-norm-0002' });
+    expect(dup.body.error.code).toBe('PHONE_TAKEN');
+  });
+
+  it('lets a student at the device limit swap out the oldest device, once per cooldown', async () => {
+    const reg = await register(app, { phone: '07704000002', deviceId: 'old-phone-0001' });
+    await loginWith({ phone: '07704000002', deviceId: 'laptop-00000002' });
+
+    const limit = await loginWith({ phone: '07704000002', deviceId: 'new-phone-0003' });
+    expect(limit.body.error.code).toBe('DEVICE_LIMIT');
+    expect(limit.body.error.details).toMatchObject({ canReplace: true, nextReplaceAt: null, replaceTarget: { name: 'Test phone' } });
+
+    const swap = await loginWith({ phone: '07704000002', deviceId: 'new-phone-0003', replaceDevice: true });
+    expect(swap.status).toBe(200);
+    expect(swap.body.user.devices.map((d) => d.deviceId)).toEqual(['laptop-00000002', 'new-phone-0003']);
+    // the swapped-out phone is signed out
+    expect((await request(app).post('/api/v1/auth/refresh').send({ refreshToken: reg.refreshToken })).status).toBe(401);
+
+    const again = await loginWith({ phone: '07704000002', deviceId: 'another-00004', replaceDevice: true });
+    expect(again.body.error.code).toBe('DEVICE_REPLACE_LOCKED');
+    expect(new Date(again.body.error.details.nextReplaceAt) > new Date()).toBe(true);
+  });
+
+  it('changes the password and signs out the other devices', async () => {
+    const reg = await register(app, { phone: '07704000003', deviceId: 'phone-pw-00001' });
+    const other = await loginWith({ phone: '07704000003', deviceId: 'laptop-pw-0002' });
+
+    const wrong = await request(app)
+      .patch('/api/v1/me/password')
+      .set(auth(reg.accessToken))
+      .send({ currentPassword: 'nope-nope', newPassword: 'new-password-1' });
+    expect(wrong.status).toBe(400); // not 401: the app must not read it as an expired session
+    expect(wrong.body.error.code).toBe('WRONG_PASSWORD');
+
+    const ok = await request(app)
+      .patch('/api/v1/me/password')
+      .set(auth(reg.accessToken))
+      .send({ currentPassword: 'password123', newPassword: 'new-password-1' });
+    expect(ok.status).toBe(204);
+    expect((await request(app).post('/api/v1/auth/refresh').send({ refreshToken: other.body.refreshToken })).status).toBe(401);
+    expect((await request(app).post('/api/v1/auth/refresh').send({ refreshToken: reg.refreshToken })).status).toBe(200);
+    expect((await loginWith({ phone: '07704000003', deviceId: 'phone-pw-00001' })).body.error.code).toBe('INVALID_CREDENTIALS');
+    expect((await loginWith({ phone: '07704000003', password: 'new-password-1', deviceId: 'phone-pw-00001' })).status).toBe(200);
+  });
+
+  it('deletes a student account and frees the phone number', async () => {
+    const reg = await register(app, { phone: '07704000004', deviceId: 'phone-del-0001' });
+    const staff = await request(app).delete('/api/v1/me').set(auth(teacher.accessToken)).send({ password: 'password123' });
+    expect(staff.status).toBe(403); // staff accounts own courses; the administration closes them
+
+    const wrong = await request(app).delete('/api/v1/me').set(auth(reg.accessToken)).send({ password: 'nope-nope' });
+    expect(wrong.body.error.code).toBe('WRONG_PASSWORD');
+    expect((await request(app).delete('/api/v1/me').set(auth(reg.accessToken)).send({ password: 'password123' })).status).toBe(204);
+
+    expect((await request(app).get('/api/v1/me').set(auth(reg.accessToken))).status).toBe(401);
+    expect((await loginWith({ phone: '07704000004', deviceId: 'phone-del-0001' })).body.error.code).toBe('INVALID_CREDENTIALS');
+    const fresh = await register(app, { phone: '07704000004', deviceId: 'phone-del-0002' });
+    expect(fresh.user.id).not.toBe(reg.user.id);
+  });
+
+  it('publishes the app settings', async () => {
+    const res = await request(app).get('/api/v1/app-config');
+    expect(res.status).toBe(200);
+    expect(res.body.privacyUrl).toMatch(/\/privacy$/);
+    expect(res.body.termsUrl).toMatch(/\/terms$/);
+    expect(res.body).toHaveProperty('supportWhatsapp');
   });
 });

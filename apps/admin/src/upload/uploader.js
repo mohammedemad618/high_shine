@@ -16,11 +16,18 @@ let items = {};
 let snapshot = [];
 const listeners = new Set();
 const doneListeners = new Set();
+const cancelListeners = new Set();
 
 /** Called with the item when a file has been fully uploaded (the lesson is now queued for processing). */
 export function onUploadDone(listener) {
   doneListeners.add(listener);
   return () => doneListeners.delete(listener);
+}
+
+/** Called with the item when the user cancels an upload (the server then restores the lesson's previous state). */
+export function onUploadCancelled(listener) {
+  cancelListeners.add(listener);
+  return () => cancelListeners.delete(listener);
 }
 
 function emit() {
@@ -182,11 +189,16 @@ export function retryUpload(id) {
   uppy.retryUpload(id).catch(() => {});
 }
 
-/** Stops an upload and discards its partial data on the server. */
+/**
+ * Stops an upload and discards its partial data on the server (tus DELETE, which also forgets the resume URL,
+ * so picking the file again starts from 0%).
+ */
 export function cancelUpload(id) {
+  const item = items[id];
   if (uppy?.getFile(id)) uppy.removeFile(id);
   delete items[id];
   emit();
+  if (item) cancelListeners.forEach((l) => l(item));
 }
 
 export function dismissUpload(id) {
@@ -209,6 +221,9 @@ export function resetUploads() {
 
 export const isActive = (item) => item.state !== 'done' && item.state !== 'error';
 
+/** Whether a file is still uploading in this tab; read on demand (beforeunload, logout) rather than subscribed to. */
+export const hasActiveUploads = () => snapshot.some(isActive);
+
 const subscribe = (l) => {
   listeners.add(l);
   return () => listeners.delete(l);
@@ -229,7 +244,7 @@ export function useLessonUpload(lessonId) {
 // Warn before closing the tab while an upload is running (it can be resumed, but only by re-picking the file).
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', (e) => {
-    if (snapshot.some(isActive)) {
+    if (hasActiveUploads()) {
       e.preventDefault();
       e.returnValue = '';
     }

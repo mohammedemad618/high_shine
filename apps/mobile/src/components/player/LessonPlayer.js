@@ -26,15 +26,18 @@ function sourceFor(playbackUrl, renditions, quality) {
  * Video + watermark + custom controls. Progress pings run inside.
  *
  * Props: playback (POST /lessons/:id/playback response), startAt (seconds), fullscreen, speed, quality,
- * onExpired() to request a fresh playback, header (full-screen top bar), children (drawn over the video).
+ * onExpired() to request a fresh playback, onTakenOver() when another device took the account over,
+ * header (full-screen top bar), children (drawn over the video).
  */
-export function LessonPlayer({ playback, startAt, fullscreen, speed, quality, onExpired, header, children }) {
+export function LessonPlayer({ playback, startAt, fullscreen, speed, quality, onExpired, onTakenOver, header, children }) {
   const { lesson, playbackUrl, renditions = [], watermark } = playback;
   const source = useMemo(() => sourceFor(playbackUrl, renditions, quality), [playbackUrl, renditions, quality]);
 
   const player = useVideoPlayer(null, (p) => {
     p.timeUpdateEventInterval = 1;
     p.staysActiveInBackground = false;
+    // AirPlay would send the clean stream to a TV, without the watermark (iOS only; ignored elsewhere).
+    p.allowsExternalPlayback = false;
   });
 
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
@@ -42,7 +45,11 @@ export function LessonPlayer({ playback, startAt, fullscreen, speed, quality, on
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(playback.durationSec || 0);
 
-  const pings = useProgressPings(lesson.id, isPlaying);
+  const takenOver = useCallback(() => {
+    player.pause();
+    onTakenOver?.();
+  }, [player, onTakenOver]);
+  const pings = useProgressPings(lesson.id, isPlaying, takenOver);
   // Where to seek once the next source is ready; null once applied.
   const pendingSeek = useRef(startAt || 0);
   const wantPlay = useRef(true);

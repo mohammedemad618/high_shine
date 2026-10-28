@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import { config } from '../config.js';
 
 /**
@@ -8,6 +9,14 @@ import { config } from '../config.js';
 export function runFfmpeg(args, { durationSec, onProgress, signal } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(config.ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'], signal });
+    // Encoding is batch work: on a shared server it must not slow down the sites answering requests.
+    if (config.ffmpegNice && child.pid) {
+      try {
+        os.setPriority(child.pid, config.ffmpegNice);
+      } catch {
+        // not permitted here; encode at normal priority
+      }
+    }
     let stderr = '';
     let buffer = '';
 
