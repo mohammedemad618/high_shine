@@ -1,26 +1,27 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { ROLES } from '@lp/shared';
 import RequireAuth from '@/components/RequireAuth';
 import { useAuth } from '@/components/AuthProvider';
-import { api, errorText } from '@/lib/api';
-import { formatDate } from '@/lib/format';
+import { api, deleteAccount, errorText } from '@/lib/api';
+import { PLATFORM_LABEL, formatDate, formatDays } from '@/lib/format';
 import styles from './account.module.css';
 
-const PLATFORM_LABEL = { web: 'متصفح', ios: 'iPhone / iPad', android: 'Android', other: 'جهاز آخر' };
-
-export default function Account() {
+/** supportUrl and replaceCooldownDays come from /app-config (fetched by the server page); both may be null. */
+export default function Account({ supportUrl = null, replaceCooldownDays = null }) {
   return (
     <RequireAuth>
       <div className="container page">
         <h1 className="page-title">حسابي</h1>
-        <AccountDetails />
+        <AccountDetails supportUrl={supportUrl} replaceCooldownDays={replaceCooldownDays} />
       </div>
     </RequireAuth>
   );
 }
 
-function AccountDetails() {
+function AccountDetails({ supportUrl, replaceCooldownDays }) {
   const { user, setUser, logout } = useAuth();
   const [me, setMe] = useState({ user, currentDeviceId: null });
   const [error, setError] = useState('');
@@ -100,9 +101,210 @@ function AccountDetails() {
           </ul>
         )}
         <p className="hint">
-          تسجيل الخروج لا يحرّر مكان الجهاز. لإزالة جهاز قديم تواصل مع الإدارة.
+          تسجيل الخروج لا يحرّر مكان الجهاز. عند الدخول من جهاز جديد بعد بلوغ الحد يمكنك تسجيل الخروج من الجهاز الأقدم
+          استخداماً بنفسك{replaceCooldownDays ? ` (مرة واحدة كل ${formatDays(replaceCooldownDays)})` : ''}، أو{' '}
+          {supportUrl ? (
+            <a href={supportUrl} target="_blank" rel="noopener noreferrer">
+              التواصل مع الدعم
+            </a>
+          ) : (
+            'التواصل مع الإدارة'
+          )}
+          .
         </p>
       </section>
+
+      <ChangePassword />
+
+      {profile.role === ROLES.STUDENT && <DeleteAccount />}
     </div>
+  );
+}
+
+const EMPTY_PASSWORDS = { currentPassword: '', newPassword: '', confirm: '' };
+
+/** PATCH /me/password. The API signs out every other device; this one stays signed in. */
+function ChangePassword() {
+  const [form, setForm] = useState(EMPTY_PASSWORDS);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+
+  const update = (key) => (e) => {
+    setForm((f) => ({ ...f, [key]: e.target.value }));
+    setDone(false);
+  };
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    setError('');
+    setDone(false);
+    if (!form.currentPassword) return setError('اكتب كلمة المرور الحالية');
+    if (form.newPassword.length < 8) return setError('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل');
+    if (form.newPassword !== form.confirm) return setError('تأكيد كلمة المرور غير مطابق');
+
+    setBusy(true);
+    try {
+      // A wrong current password is a 400 WRONG_PASSWORD, so it never signs this browser out.
+      await api('/me/password', {
+        method: 'PATCH',
+        body: { currentPassword: form.currentPassword, newPassword: form.newPassword },
+      });
+      setForm(EMPTY_PASSWORDS);
+      setDone(true);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={`card ${styles.block}`}>
+      <h2 className={styles.heading}>تغيير كلمة المرور</h2>
+      <form className="form" onSubmit={onSubmit} noValidate>
+        <div className="field">
+          <label htmlFor="current-password">كلمة المرور الحالية</label>
+          <input
+            id="current-password"
+            className="input"
+            type="password"
+            dir="ltr"
+            autoComplete="current-password"
+            value={form.currentPassword}
+            onChange={update('currentPassword')}
+            maxLength={128}
+            required
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="new-password">كلمة المرور الجديدة</label>
+          <input
+            id="new-password"
+            className="input"
+            type="password"
+            dir="ltr"
+            autoComplete="new-password"
+            value={form.newPassword}
+            onChange={update('newPassword')}
+            minLength={8}
+            maxLength={128}
+            required
+          />
+          <span className="hint">8 أحرف على الأقل</span>
+        </div>
+        <div className="field">
+          <label htmlFor="confirm-password">تأكيد كلمة المرور الجديدة</label>
+          <input
+            id="confirm-password"
+            className="input"
+            type="password"
+            dir="ltr"
+            autoComplete="new-password"
+            value={form.confirm}
+            onChange={update('confirm')}
+            maxLength={128}
+            required
+          />
+        </div>
+
+        {error && (
+          <div className="alert alert-error" role="alert">
+            {error}
+          </div>
+        )}
+        {done && (
+          <div className="alert alert-success" role="status">
+            تم تغيير كلمة المرور، وسُجّل الخروج من أجهزتك الأخرى.
+          </div>
+        )}
+
+        <button type="submit" className="btn btn-primary" disabled={busy}>
+          {busy ? 'جارٍ الحفظ…' : 'حفظ كلمة المرور'}
+        </button>
+      </form>
+    </section>
+  );
+}
+
+/** DELETE /me (students only; staff accounts are closed by an administrator). Two steps: explain, then password. */
+function DeleteAccount() {
+  const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  function cancel() {
+    setConfirming(false);
+    setPassword('');
+    setError('');
+  }
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    setError('');
+    if (!password) return setError('اكتب كلمة المرور لتأكيد الحذف');
+    setBusy(true);
+    try {
+      await deleteAccount(password);
+      router.replace('/');
+    } catch (err) {
+      setError(errorText(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={`card ${styles.block} ${styles.danger}`} aria-labelledby="delete-account-heading">
+      <h2 id="delete-account-heading" className={`${styles.heading} ${styles.dangerHeading}`}>
+        حذف الحساب
+      </h2>
+      <ul className={styles.consequences}>
+        <li>يُحذف اسمك ورقم هاتفك وأجهزتك وسجل مشاهدتك.</li>
+        <li>تفقد الوصول إلى كل الكورسات المفعّلة على هذا الحساب، ولا يمكن استرجاعها.</li>
+        <li>تُسجَّل خارج كل أجهزتك فوراً، ولا يمكن التراجع عن الحذف.</li>
+      </ul>
+
+      {!confirming ? (
+        <div>
+          <button type="button" className="btn btn-danger" onClick={() => setConfirming(true)}>
+            حذف حسابي
+          </button>
+        </div>
+      ) : (
+        <form className={`form ${styles.confirm}`} onSubmit={onSubmit} noValidate>
+          <div className="alert alert-error">هل أنت متأكد؟ سيُحذف حسابك نهائياً. اكتب كلمة المرور للتأكيد.</div>
+          <div className="field">
+            <label htmlFor="delete-password">كلمة المرور</label>
+            <input
+              id="delete-password"
+              className="input"
+              type="password"
+              dir="ltr"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              maxLength={128}
+              autoFocus
+              required
+            />
+          </div>
+          {error && (
+            <div className="alert alert-error" role="alert">
+              {error}
+            </div>
+          )}
+          <div className={styles.actions}>
+            <button type="submit" className={`btn ${styles.dangerSolid}`} disabled={busy}>
+              {busy ? 'جارٍ الحذف…' : 'حذف الحساب نهائياً'}
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={cancel} disabled={busy}>
+              إلغاء
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }

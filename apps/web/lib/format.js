@@ -32,6 +32,31 @@ export function formatDate(iso) {
   return new Intl.DateTimeFormat(LOCALE, { year: 'numeric', month: 'long', day: 'numeric' }).format(d);
 }
 
+export function formatDateTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat(LOCALE, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(d);
+}
+
+/** Day count with the Arabic noun form it takes: 1 → "يوم", 2 → "يومين", 7 → "7 أيام", 30 → "30 يوماً". */
+export function formatDays(n) {
+  if (n === 1) return 'يوم';
+  if (n === 2) return 'يومين';
+  const rest = n % 100;
+  if (rest >= 3 && rest <= 10) return `${n} أيام`;
+  if (rest >= 11) return `${n} يوماً`;
+  return `${n} يوم`;
+}
+
+export const PLATFORM_LABEL = { web: 'متصفح', ios: 'iPhone / iPad', android: 'Android', other: 'جهاز آخر' };
+
 export function formatBytes(bytes) {
   if (!bytes) return '';
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;

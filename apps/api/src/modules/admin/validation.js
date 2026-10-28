@@ -18,7 +18,8 @@ export const listUsersQuery = z.object({
 
 export const updateUserSchema = z.object({
   name: z.string().trim().min(2).max(80).optional(),
-  status: z.enum(Object.values(USER_STATUS)).optional(),
+  // 'deleted' is reached only through the student's own account deletion, which also anonymizes the record.
+  status: z.enum([USER_STATUS.ACTIVE, USER_STATUS.SUSPENDED]).optional(),
   maxDevices: z.number().int().min(1).max(10).optional(),
   password: passwordSchema.optional(),
 });

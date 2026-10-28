@@ -27,9 +27,15 @@ export const env = {
   accessTokenTtl: process.env.ACCESS_TOKEN_TTL || '15m',
   refreshTokenDays: Number(process.env.REFRESH_TOKEN_DAYS || 30),
   defaultMaxDevices: Number(process.env.DEFAULT_MAX_DEVICES || DEFAULT_MAX_DEVICES),
+  // A user at the device limit may swap out their least recently used device by themselves once per this many days.
+  deviceReplaceCooldownDays: Number(process.env.DEVICE_REPLACE_COOLDOWN_DAYS || 30),
 
   publicApiUrl: (process.env.PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, ''),
   mediaPublicUrl: (process.env.MEDIA_PUBLIC_URL || 'http://localhost:8080').replace(/\/$/, ''),
+  // The student website: the apps link to its privacy policy and terms pages.
+  publicWebUrl: (process.env.PUBLIC_WEB_URL || 'http://localhost:3000').replace(/\/$/, ''),
+  // International format without + (e.g. 9647XXXXXXXXX); empty hides the support button in the apps.
+  supportWhatsapp: (process.env.SUPPORT_WHATSAPP || '').replace(/\D/g, ''),
   corsOrigins: (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())
@@ -37,6 +43,8 @@ export const env = {
 
   mediaRoot: path.resolve(process.env.MEDIA_ROOT || '/srv/media'),
   playbackTtlSec: Number(process.env.PLAYBACK_TTL_SEC || 4 * 60 * 60),
+  // Attachment download links are fetched on tap, so they can be short-lived.
+  attachmentLinkTtlSec: Number(process.env.ATTACHMENT_LINK_TTL_SEC || 5 * 60),
   keepSource: (process.env.KEEP_SOURCE ?? 'true') === 'true',
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES || 8 * 1024 ** 3),
 

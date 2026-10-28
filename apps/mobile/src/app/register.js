@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { Link, router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { normalizePhone } from '@lp/shared';
 import { messageFor } from '../api/errors';
 import { signUp } from '../api/session';
 import { Button, IconButton, Note, T, TextField } from '../components/ui';
+import { useAppConfig } from '../hooks/queries';
 import { colors, fonts, spacing } from '../theme';
 
+// Same check as the API after normalizing (Arabic-Indic digits, +964 / 00964 prefixes).
 const PHONE_RE = /^\+?\d{7,15}$/;
 
 // 0–4: length, letters + digits, mixed case or symbols, 12+ characters.
@@ -22,6 +26,7 @@ const STRENGTH = ['', 'ضعيفة', 'مقبولة', 'قوية', 'قوية جدا
 
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
+  const { data: config } = useAppConfig();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -31,7 +36,7 @@ export default function RegisterScreen() {
 
   function validate() {
     if (name.trim().length < 2) return 'أدخل الاسم الكامل';
-    if (!PHONE_RE.test(phone.replace(/[\s-]/g, ''))) return 'رقم الهاتف غير صحيح';
+    if (!PHONE_RE.test(normalizePhone(phone))) return 'رقم الهاتف غير صحيح';
     if (password.length < 8) return 'كلمة المرور يجب أن تكون 8 أحرف على الأقل';
     return null;
   }
@@ -120,6 +125,19 @@ export default function RegisterScreen() {
           </T>
         ) : null}
         <Button title="إنشاء الحساب" onPress={submit} loading={busy} />
+        {config ? (
+          <T size={13} color={colors.muted} style={[styles.center, styles.lines]}>
+            بإنشاء الحساب فأنت توافق على{' '}
+            <T weight="semibold" size={13} color={colors.primary} onPress={() => WebBrowser.openBrowserAsync(config.termsUrl)}>
+              شروط الاستخدام
+            </T>{' '}
+            و
+            <T weight="semibold" size={13} color={colors.primary} onPress={() => WebBrowser.openBrowserAsync(config.privacyUrl)}>
+              سياسة الخصوصية
+            </T>
+            .
+          </T>
+        ) : null}
         <Note icon="smartphone">هذا الجهاز سيكون أول جهاز مرتبط بحسابك، ويمكنك إضافة جهاز ثانٍ لاحقاً.</Note>
 
         <View style={styles.footer}>

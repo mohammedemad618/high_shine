@@ -63,8 +63,9 @@ export async function redeem(code, user) {
       throw AppError.conflict(ERROR_CODES.CODE_USED_UP);
     }
 
+    // Codes already sold keep working when a course is hidden from the catalogue; only drafts refuse them.
     const course = await Course.findById(activation.courseId).session(session);
-    if (!course || course.status !== COURSE_STATUS.PUBLISHED) throw AppError.conflict(ERROR_CODES.COURSE_NOT_PUBLISHED);
+    if (!course || course.status === COURSE_STATUS.DRAFT) throw AppError.conflict(ERROR_CODES.COURSE_NOT_PUBLISHED);
 
     const enrollment = await grantEnrollment(
       {

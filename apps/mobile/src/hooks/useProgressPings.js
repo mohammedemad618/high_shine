@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { PROGRESS_PING_SECONDS } from '@lp/shared';
-import { saveProgress } from '../api/endpoints';
+import { ERROR_CODES, PROGRESS_PING_SECONDS } from '@lp/shared';
+import { endPlayback, saveProgress } from '../api/endpoints';
 import { queryClient } from '../lib/queryClient';
 
 // A jump bigger than this between two time updates is a seek, not watching.
@@ -10,9 +10,13 @@ const MAX_TICK_SEC = 3;
  * Tracks real watch time and reports it with POST /lessons/:id/progress every PROGRESS_PING_SECONDS while
  * playing, on pause and on unmount. The ping also keeps the server-side playback session alive.
  *
- * Feed it with `onTime(currentTime, isPlaying)` from the player's time updates.
+ * Feed it with `onTime(currentTime, isPlaying)` from the player's time updates. `onTakenOver` runs when the
+ * server answers CONCURRENT_PLAYBACK: another device took the account over, so this one must stop.
+ * On unmount the last ping is sent, then the session is ended so another device can play at once.
  */
-export function useProgressPings(lessonId, isPlaying) {
+export function useProgressPings(lessonId, isPlaying, onTakenOver) {
+  const takenOverRef = useRef(onTakenOver);
+  takenOverRef.current = onTakenOver;
   const positionRef = useRef(null); // null until the player reported a real position
   const lastTimeRef = useRef(null);
   const pendingRef = useRef(0); // watched seconds not yet reported
@@ -41,10 +45,11 @@ export function useProgressPings(lessonId, isPlaying) {
     if (watchedDeltaSec === 0 && positionSec === lastSentRef.current) return Promise.resolve();
     pendingRef.current -= watchedDeltaSec;
     lastSentRef.current = positionSec;
-    return saveProgress(lessonId, { positionSec, watchedDeltaSec }).catch(() => {
+    return saveProgress(lessonId, { positionSec, watchedDeltaSec }).catch((err) => {
       // Not fatal for playback; give the seconds back so the next ping reports them.
       pendingRef.current += watchedDeltaSec;
       lastSentRef.current = null;
+      if (err?.code === ERROR_CODES.CONCURRENT_PLAYBACK) takenOverRef.current?.();
     });
   }, [lessonId]);
 
@@ -62,15 +67,17 @@ export function useProgressPings(lessonId, isPlaying) {
     wasPlaying.current = isPlaying;
   }, [isPlaying, flush]);
 
-  // Final ping on exit, then refresh the screens that show progress.
+  // Final ping on exit, then end the session (after the ping, which would otherwise renew it) and refresh
+  // the screens that show progress.
   useEffect(
     () => () => {
       flush().finally(() => {
+        if (lessonId) endPlayback(lessonId).catch(() => {});
         queryClient.invalidateQueries({ queryKey: ['course'] });
         queryClient.invalidateQueries({ queryKey: ['me', 'courses'] });
       });
     },
-    [flush],
+    [flush, lessonId],
   );
 
   return { onTime, resetClock, flush, positionRef };

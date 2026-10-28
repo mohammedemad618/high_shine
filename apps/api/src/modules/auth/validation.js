@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { normalizePhone } from '@lp/shared';
 
 export const phoneSchema = z
   .string()
   .trim()
-  .transform((s) => s.replace(/[\s-]/g, ''))
+  .transform(normalizePhone)
   .pipe(z.string().regex(/^\+?\d{7,15}$/, 'Invalid phone number'));
 
 export const passwordSchema = z.string().min(8).max(128);
@@ -26,6 +27,8 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(128),
   // The dashboard sends 'staff' so a student who tries it is refused before a device slot is used.
   audience: z.enum(['staff']).optional(),
+  // Sent after a DEVICE_LIMIT answer when the user chose to sign out their least recently used device.
+  replaceDevice: z.boolean().optional().default(false),
   ...device,
 });
 

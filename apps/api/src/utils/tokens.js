@@ -41,6 +41,30 @@ export function signPlaybackToken({ userId, lessonId, deviceId, sessionId }) {
   return { token, exp };
 }
 
+// Attachment links are opened in the system browser, so they also carry their token in the URL; minutes, not hours.
+export function signFileToken({ userId, lessonId, attachmentId, deviceId }) {
+  const exp = Math.floor(Date.now() / 1000) + env.attachmentLinkTtlSec;
+  const token = jwt.sign(
+    { lid: String(lessonId), aid: String(attachmentId), did: deviceId, exp },
+    env.playbackSecret,
+    { subject: String(userId), audience: 'file' },
+  );
+  return { token, exp };
+}
+
+export function verifyFileToken(token, lessonId, attachmentId) {
+  let payload;
+  try {
+    payload = jwt.verify(token || '', env.playbackSecret, { audience: 'file' });
+  } catch {
+    throw AppError.unauthorized(ERROR_CODES.PLAYBACK_TOKEN_INVALID);
+  }
+  if (payload.lid !== String(lessonId) || payload.aid !== String(attachmentId)) {
+    throw AppError.forbidden(ERROR_CODES.PLAYBACK_TOKEN_INVALID);
+  }
+  return payload;
+}
+
 export function verifyPlaybackToken(token, lessonId) {
   let payload;
   try {

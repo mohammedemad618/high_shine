@@ -28,6 +28,9 @@ export default function LessonScreen() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [quality, setQuality] = useState(AUTO_QUALITY);
+  // Another device started playing on this account mid-lesson: the player is paused until it is free again.
+  const [takenOver, setTakenOver] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   // An explicit start (from "continue") wins; otherwise the server's resume point.
   const startParam = Number(start);
@@ -59,6 +62,17 @@ export default function LessonScreen() {
   }, [screenshotTaken, dismissScreenshotNotice]);
 
   const onExpired = useCallback(() => reload(true), [reload]);
+  const onTakenOver = useCallback(() => {
+    setFullscreen(false);
+    setTakenOver(true);
+  }, []);
+  // Claiming playback again succeeds once the other device has stopped.
+  const retryTakeover = useCallback(async () => {
+    setRetrying(true);
+    const fresh = await reload(true);
+    setRetrying(false);
+    if (fresh) setTakenOver(false);
+  }, [reload]);
   const lessonTitle = data?.lesson.title || title || '';
 
   if (!data) {
@@ -135,6 +149,7 @@ export default function LessonScreen() {
           speed={speed}
           quality={quality}
           onExpired={onExpired}
+          onTakenOver={onTakenOver}
           header={fullscreen ? fullscreenHeader : null}
         >
           {fullscreen && drawerOpen ? (
@@ -170,7 +185,7 @@ export default function LessonScreen() {
             </T>
           </View>
           <PlayerOptions speed={speed} onSpeed={setSpeed} quality={quality} onQuality={setQuality} renditions={renditions} />
-          <Attachments items={data.attachments} />
+          <Attachments lessonId={id} items={data.attachments} />
           {context.next ? (
             <Pressable
               accessibilityRole="button"
@@ -191,6 +206,8 @@ export default function LessonScreen() {
           ) : null}
         </ScrollView>
       )}
+
+      <ConcurrentSheet visible={takenOver} retrying={retrying} onRetry={retryTakeover} onBack={() => router.back()} />
 
       {screenshotTaken ? (
         <View style={styles.toast} pointerEvents="none">

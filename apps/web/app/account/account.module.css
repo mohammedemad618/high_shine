@@ -64,3 +64,42 @@
   font-size: 0.85rem;
   color: var(--text-muted);
 }
+
+/* ---------- danger zone ---------- */
+
+.danger {
+  grid-column: 1 / -1;
+  margin-top: 1rem;
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+}
+
+.dangerHeading {
+  color: var(--danger);
+}
+
+.consequences {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding-inline-start: 1.25rem;
+  color: var(--text-muted);
+}
+
+.confirm {
+  max-width: 420px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.dangerSolid {
+  background: var(--danger);
+  color: var(--surface);
+}
+
+.dangerSolid:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 85%, #000);
+}

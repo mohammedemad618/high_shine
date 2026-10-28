@@ -38,8 +38,18 @@ async function assertOwns(user, lesson) {
   if (!course || String(course.teacherId) !== String(user._id)) reject(403, ERROR_CODES.FORBIDDEN);
 }
 
+// A cancelled upload (tus DELETE) must not leave the lesson stuck in "uploading": go back to what it was.
+async function resetCancelledUpload(uploadId) {
+  const lesson = await Lesson.findOne({ 'video.uploadId': uploadId, status: LESSON_STATUS.UPLOADING });
+  if (!lesson) return;
+  if (lesson.video.hlsPath) lesson.status = LESSON_STATUS.READY;
+  else lesson.status = lesson.video.sourcePath ? LESSON_STATUS.FAILED : LESSON_STATUS.DRAFT;
+  lesson.video.uploadId = null;
+  await lesson.save();
+}
+
 export function createTusServer() {
-  return new Server({
+  const server = new Server({
     path: UPLOAD_PATH,
     datastore: new FileStore({ directory: mediaPaths.uploads }),
     maxSize: env.maxUploadBytes,
@@ -87,6 +97,11 @@ export function createTusServer() {
       return {};
     },
   });
+  // EVENTS.POST_TERMINATE from @tus/utils; fired after the DELETE has removed the partial file.
+  server.on('POST_TERMINATE', (_req, _res, uploadId) => {
+    resetCancelledUpload(uploadId).catch((err) => logger.warn({ err, uploadId }, 'Could not reset a cancelled upload'));
+  });
+  return server;
 }
 
 /** Express handler. Mount it before any body parser so tus can read the raw stream. */

@@ -65,6 +65,8 @@ export default function RootLayout() {
           <Stack.Screen name="search" options={{ animation: 'fade' }} />
           <Stack.Screen name="course/[id]" />
           <Stack.Screen name="lesson/[id]" options={{ contentStyle: { backgroundColor: colors.player } }} />
+          <Stack.Screen name="change-password" options={{ contentStyle: { backgroundColor: colors.card } }} />
+          <Stack.Screen name="delete-account" options={{ contentStyle: { backgroundColor: colors.card } }} />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="login" options={{ contentStyle: { backgroundColor: colors.card } }} />

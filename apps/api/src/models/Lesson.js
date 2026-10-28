@@ -48,4 +48,8 @@ const lessonSchema = new mongoose.Schema(
 lessonSchema.index({ courseId: 1, sectionId: 1, order: 1 });
 lessonSchema.index({ status: 1 });
 
+// Students see and play a lesson once it has a finished HLS version. Replacing the video (uploading → queued →
+// processing, or a failed re-encode) keeps that version live until the worker swaps the new one in.
+lessonSchema.statics.playableFilter = () => ({ 'video.hlsPath': { $ne: null } });
+
 export const Lesson = mongoose.model('Lesson', lessonSchema);

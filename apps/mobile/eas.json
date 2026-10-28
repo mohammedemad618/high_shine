@@ -16,13 +16,13 @@
     },
     "preview": {
       "autoIncrement": true,
-      "env": { "EXPO_PUBLIC_API_URL": "https://api.example.com/api/v1" },
+      "env": { "EXPO_PUBLIC_API_URL": "https://api.hishin.108-61-190-4.sslip.io/api/v1" },
       "android": { "distribution": "internal", "buildType": "apk" },
       "ios": { "distribution": "store" }
     },
     "production": {
       "autoIncrement": true,
-      "env": { "EXPO_PUBLIC_API_URL": "https://api.example.com/api/v1" },
+      "env": { "EXPO_PUBLIC_API_URL": "https://api.hishin.108-61-190-4.sslip.io/api/v1" },
       "android": { "buildType": "app-bundle" }
     }
   },

@@ -270,31 +270,41 @@ export async function api(path, { method = 'GET', body, auth = true, keepalive, 
 }
 
 /**
- * Fire-and-forget POST that survives page unload (keepalive). Uses the current access token as-is because
+ * Fire-and-forget request that survives page unload (keepalive). Uses the current access token as-is because
  * there is no time to refresh while the page is going away. sendBeacon cannot carry the Authorization header.
+ * The promise settles (never rejects) when the request is done, so a follow-up can wait for it while the page lives.
  */
-export function postOnUnload(path, body) {
+export function sendOnUnload(path, { method = 'POST', body } = {}) {
   const token = read(KEYS.access);
-  if (!token) return;
+  if (!token) return Promise.resolve();
+  const headers = { Authorization: `Bearer ${token}` };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
   try {
-    fetch(`${PUBLIC_API_URL}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
+    return fetch(`${PUBLIC_API_URL}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
       keepalive: true,
-    }).catch(() => {});
+    }).then(
+      () => {},
+      () => {},
+    );
   } catch {
-    // ignore
+    return Promise.resolve();
   }
 }
 
 // ---------- auth endpoints ----------
 
-export async function login({ phone, password }) {
+/**
+ * replaceDevice: sent after a DEVICE_LIMIT answer when the user chose to sign out their least recently used
+ * device (error.details.replaceTarget) to make room for this browser.
+ */
+export async function login({ phone, password, replaceDevice = false }) {
   const data = await api('/auth/login', {
     method: 'POST',
     auth: false,
-    body: { phone, password, deviceId: getDeviceId(), deviceName: deviceName(), platform: 'web' },
+    body: { phone, password, replaceDevice, deviceId: getDeviceId(), deviceName: deviceName(), platform: 'web' },
   });
   saveSession(data);
   return data.user;
@@ -316,5 +326,11 @@ export async function logout() {
   } catch {
     // the local session is cleared either way
   }
+  clearSession();
+}
+
+/** Permanently deletes (anonymizes) the student account. The API has already ended every session, so no logout call. */
+export async function deleteAccount(password) {
+  await api('/me', { method: 'DELETE', body: { password } });
   clearSession();
 }

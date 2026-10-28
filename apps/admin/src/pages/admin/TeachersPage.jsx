@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ROLES } from '@lp/shared';
 import { api } from '../../api/client.js';
 import { keys } from '../../api/hooks.js';
-import { EmptyState, ErrorBox, Field, Modal, Pagination, Spinner } from '../../components/ui.jsx';
+import { EmptyState, ErrorBox, Field, Modal, Pagination, Spinner, USER_STATUS_LABELS } from '../../components/ui.jsx';
 import { fmtDate } from '../../lib/format.js';
 
 function CreateTeacherModal({ onClose }) {
@@ -85,7 +85,7 @@ export default function TeachersPage() {
                 <tr key={t.id}>
                   <td>{t.name}</td>
                   <td dir="ltr" className="ltr-cell">{t.phone}</td>
-                  <td>{t.status === 'active' ? 'فعّال' : 'موقوف'}</td>
+                  <td>{USER_STATUS_LABELS[t.status] || t.status}</td>
                   <td>
                     {t.devices.length}/{t.maxDevices}
                   </td>

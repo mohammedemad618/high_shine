@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ERROR_CODES, PROGRESS_PING_SECONDS, errorMessage } from '@lp/shared';
-import { api, errorText, postOnUnload } from '@/lib/api';
+import { api, errorText, sendOnUnload } from '@/lib/api';
 import { formatBytes, formatClock } from '@/lib/format';
 import Watermark from './Watermark';
 import styles from './player.module.css';
@@ -45,6 +45,8 @@ export default function Player({ lessonId }) {
   const nativeStartRef = useRef(0);
   const rateRef = useRef(1);
   const idleTimerRef = useRef(null);
+  const takenOverRef = useRef(false); // another device took the account over: no more pings until a retry
+  const lastPingRef = useRef(Promise.resolve()); // the latest progress request (ending the session waits for it)
 
   const [attempt, setAttempt] = useState(0);
   const [playback, setPlayback] = useState(null);
@@ -64,6 +66,8 @@ export default function Player({ lessonId }) {
   const [pseudoFullscreen, setPseudoFullscreen] = useState(false);
   const [idle, setIdle] = useState(false);
   const [course, setCourse] = useState(null);
+  const [openingId, setOpeningId] = useState(null);
+  const [attachmentError, setAttachmentError] = useState('');
 
   const destroyHls = useCallback(() => {
     if (hlsRef.current) {
@@ -72,28 +76,58 @@ export default function Player({ lessonId }) {
     }
   }, []);
 
-  // ---------- progress pings ----------
+  // ---------- progress pings and the playback session ----------
 
+  // A progress ping answered CONCURRENT_PLAYBACK: another device took the account over, so stop and say so.
+  // The error's retry button asks for the session again.
+  const stopTakenOver = useCallback(() => {
+    takenOverRef.current = true;
+    if (!aliveRef.current) return;
+    videoRef.current?.pause();
+    destroyHls();
+    setError(toPlayerError({ code: ERROR_CODES.CONCURRENT_PLAYBACK }));
+  }, [destroyHls]);
+
+  /** Reports position and watch time. Returns the request's promise, which settles and never rejects. */
   const sendPing = useCallback(
     (mode) => {
-      const video = videoRef.current;
-      if (!video || !startedRef.current) return;
-      const positionSec = Math.floor(video.currentTime || 0);
+      if (!startedRef.current || takenOverRef.current) return lastPingRef.current;
+      // On unmount the <video> ref is already detached: fall back to the last time update.
+      const positionSec = Math.floor(videoRef.current?.currentTime ?? lastTimeRef.current);
       const watchedDeltaSec = Math.min(600, Math.round(watchedRef.current * 10) / 10);
       // nothing new since the last ping (e.g. visibilitychange followed by pagehide)
-      if (mode !== 'interval' && watchedDeltaSec === 0 && lastSentRef.current.pos === positionSec) return;
+      if (mode !== 'interval' && watchedDeltaSec === 0 && lastSentRef.current.pos === positionSec) {
+        return lastPingRef.current;
+      }
       watchedRef.current = 0;
       lastSentRef.current = { pos: positionSec };
+      const path = `/lessons/${lessonId}/progress`;
       const body = { positionSec, watchedDeltaSec };
-      if (mode === 'unload') {
-        postOnUnload(`/lessons/${lessonId}/progress`, body);
-        return;
-      }
-      api(`/lessons/${lessonId}/progress`, { method: 'POST', body }).catch(() => {
-        watchedRef.current += watchedDeltaSec; // credit it on the next ping
-      });
+      lastPingRef.current =
+        mode === 'unload'
+          ? sendOnUnload(path, { body })
+          : api(path, { method: 'POST', body }).catch((err) => {
+              watchedRef.current += watchedDeltaSec; // credit it on the next ping
+              if (err?.code === ERROR_CODES.CONCURRENT_PLAYBACK) stopTakenOver();
+            });
+      return lastPingRef.current;
     },
-    [lessonId],
+    [lessonId, stopTakenOver],
+  );
+
+  /**
+   * Last ping, then DELETE the playback session so another device can play at once instead of after the server's
+   * idle timeout. The DELETE waits for the ping, which would otherwise renew the session; on pagehide nothing runs
+   * after the handler, so both go out together (best effort).
+   */
+  const endSession = useCallback(
+    (unloading) => {
+      const path = `/lessons/${lessonId}/playback`;
+      const ping = sendPing('unload');
+      if (unloading) sendOnUnload(path, { method: 'DELETE' });
+      else ping.then(() => sendOnUnload(path, { method: 'DELETE' }));
+    },
+    [lessonId, sendPing],
   );
 
   useEffect(() => {
@@ -101,9 +135,10 @@ export default function Player({ lessonId }) {
       const v = videoRef.current;
       if (v && !v.paused && !v.ended) sendPing('interval');
     }, PROGRESS_PING_SECONDS * 1000);
-    const onPageHide = () => sendPing('unload');
+    const onPageHide = () => endSession(true);
+    // Hidden tab: the next ping re-creates the session if this tab keeps playing and no other device took over.
     const onVisibility = () => {
-      if (document.visibilityState === 'hidden') sendPing('unload');
+      if (document.visibilityState === 'hidden') endSession(false);
     };
     window.addEventListener('pagehide', onPageHide);
     document.addEventListener('visibilitychange', onVisibility);
@@ -112,7 +147,10 @@ export default function Player({ lessonId }) {
       window.removeEventListener('pagehide', onPageHide);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [sendPing]);
+  }, [sendPing, endSession]);
+
+  // Leaving the lesson. The player is keyed by lessonId, so endSession never changes before the unmount.
+  useEffect(() => () => endSession(false), [endSession]);
 
   // ---------- loading the stream ----------
 
@@ -151,6 +189,11 @@ export default function Player({ lessonId }) {
             return;
           }
           const status = data.response?.code ?? data.networkDetails?.status;
+          // 409 from the key request: another device holds the account's playback session.
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && status === 409) {
+            stopTakenOver();
+            return;
+          }
           // 401/403/410: the playback token or the signed segment links expired.
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR && [401, 403, 410].includes(status) && renewRef.current?.()) {
             return;
@@ -169,7 +212,7 @@ export default function Player({ lessonId }) {
         setError({ code: 'UNSUPPORTED', text: 'متصفحك لا يدعم تشغيل هذا الفيديو، جرّب متصفحاً حديثاً.' });
       }
     },
-    [destroyHls, play],
+    [destroyHls, play, stopTakenOver],
   );
 
   /** Requests a fresh playback token and resumes at the current position. Returns false if not allowed now. */
@@ -196,6 +239,7 @@ export default function Player({ lessonId }) {
 
   useEffect(() => {
     aliveRef.current = true;
+    takenOverRef.current = false;
     const ctrl = new AbortController();
     rateRef.current = readRate();
     setRate(rateRef.current);
@@ -232,6 +276,29 @@ export default function Player({ lessonId }) {
       .catch(() => {});
     return () => ctrl.abort();
   }, [courseId]);
+
+  // ---------- attachments ----------
+
+  /**
+   * Links are issued per click and expire within minutes, so a copied link soon stops working. The tab is opened
+   * inside the click, before the request: a window opened after an await is blocked as a popup (Safari).
+   */
+  const openAttachment = async (attachment) => {
+    const tab = window.open('', '_blank');
+    if (tab) tab.opener = null;
+    setAttachmentError('');
+    setOpeningId(attachment.id);
+    try {
+      const { url } = await api(`/lessons/${lessonId}/attachments/${attachment.id}/link`, { method: 'POST' });
+      if (tab) tab.location.href = url;
+      else window.open(url, '_blank', 'noopener');
+    } catch (err) {
+      tab?.close();
+      setAttachmentError(errorText(err));
+    } finally {
+      setOpeningId(null);
+    }
+  };
 
   // ---------- video element events ----------
 
@@ -584,13 +651,23 @@ export default function Player({ lessonId }) {
             <ul>
               {playback.attachments.map((a) => (
                 <li key={a.id}>
-                  <a href={a.url} target="_blank" rel="noopener noreferrer">
+                  <button
+                    type="button"
+                    className={styles.attachmentLink}
+                    onClick={() => openAttachment(a)}
+                    disabled={openingId === a.id}
+                  >
                     📄 {a.name}
-                  </a>
-                  <span className="muted">{formatBytes(a.size)}</span>
+                  </button>
+                  <span className="muted">{openingId === a.id ? 'جارٍ الفتح…' : formatBytes(a.size)}</span>
                 </li>
               ))}
             </ul>
+            {attachmentError && (
+              <div className={`alert alert-error ${styles.attachmentError}`} role="alert">
+                {attachmentError}
+              </div>
+            )}
           </section>
         )}
       </div>

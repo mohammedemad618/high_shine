@@ -8,7 +8,11 @@ const PAGE_SIZE = 100; // API maximum
 const MAX_PAGES = 50;
 
 export default async function sitemap() {
-  const entries = [{ url: `${SITE_URL}/`, changeFrequency: 'daily', priority: 1 }];
+  const entries = [
+    { url: `${SITE_URL}/`, changeFrequency: 'daily', priority: 1 },
+    { url: `${SITE_URL}/privacy`, changeFrequency: 'yearly', priority: 0.2 },
+    { url: `${SITE_URL}/terms`, changeFrequency: 'yearly', priority: 0.2 },
+  ];
 
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const { data } = await fetchCourses({ page, limit: PAGE_SIZE, revalidate: 600 });

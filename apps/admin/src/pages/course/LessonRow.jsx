@@ -10,6 +10,8 @@ import { setLesson } from './courseCache.js';
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
 const POLLED = [LESSON_STATUS.QUEUED, LESSON_STATUS.PROCESSING];
+// A replacement doesn't take the lesson offline: the server swaps it in only once it has been encoded.
+const REPLACE_CONFIRM = 'استبدال فيديو هذا الدرس؟ يبقى الفيديو الحالي متاحاً للطلاب حتى يجهز الفيديو الجديد.';
 
 function Attachments({ lesson, courseId }) {
   const qc = useQueryClient();
@@ -86,6 +88,8 @@ export default function LessonRow({ lesson, courseId, handle }) {
   const live = useLessonStatus(lesson.id, courseId, polling);
   const status = polling && live ? live.status : lesson.status;
   const processing = (polling && live ? live.processing : lesson.processing) || {};
+  // Students keep watching the last finished version while a replacement uploads, encodes or fails.
+  const previousLive = Boolean(lesson.video?.live) && (localInFlight || status !== LESSON_STATUS.READY);
 
   const update = useMutation({
     mutationFn: (body) => api(`/lessons/${lesson.id}`, { method: 'PATCH', body }),
@@ -113,7 +117,7 @@ export default function LessonRow({ lesson, courseId, handle }) {
   }
 
   function pickVideo() {
-    if (status === LESSON_STATUS.READY && !window.confirm('استبدال فيديو هذا الدرس؟ ستُعاد معالجته من جديد.')) return;
+    if (status === LESSON_STATUS.READY && !window.confirm(REPLACE_CONFIRM)) return;
     videoRef.current?.click();
   }
 
@@ -172,6 +176,7 @@ export default function LessonRow({ lesson, courseId, handle }) {
             ) : (
               <LessonStatusBadge status={status} progress={processing.progress} />
             )}
+            {previousLive && <span className="text-success small">النسخة السابقة متاحة للطلاب</span>}
             {lesson.durationSec ? <span className="muted small">{fmtDuration(lesson.durationSec)}</span> : null}
             {lesson.video?.originalName && <span className="muted small" title={lesson.video.originalName}>{lesson.video.originalName}</span>}
             <label className="check">

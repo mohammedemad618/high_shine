@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import mongoose from 'mongoose';
-import { COURSE_STATUS, ERROR_CODES, LESSON_STATUS, ROLES } from '@lp/shared';
+import { COURSE_STATUS, ERROR_CODES, ROLES } from '@lp/shared';
 import { assertCourseOwner, isStaff } from '../../middleware/roles.js';
 import { Course, Enrollment, Lesson, User, WatchProgress } from '../../models/index.js';
 import { AppError } from '../../utils/AppError.js';
@@ -60,17 +60,20 @@ export async function getCourseDetails(idOrSlug, user) {
   const course = await findCourse(idOrSlug);
   if (!course) throw AppError.notFound('Course not found');
   const manage = canManage(course, user);
-  if (course.status !== COURSE_STATUS.PUBLISHED && !manage) throw AppError.notFound('Course not found');
+  const student = user && user.role === ROLES.STUDENT;
+  const enrollment = student
+    ? await Enrollment.findOne({ userId: user._id, courseId: course._id, ...Enrollment.activeFilter() })
+    : null;
+  // A hidden course leaves the catalogue, but students who already have access keep it.
+  const visible = course.status === COURSE_STATUS.PUBLISHED || (course.status === COURSE_STATUS.HIDDEN && enrollment);
+  if (!visible && !manage) throw AppError.notFound('Course not found');
 
   await course.populate('teacherId', 'name');
-  const lessonFilter = { courseId: course._id };
-  if (!manage) lessonFilter.status = LESSON_STATUS.READY;
+  const lessonFilter = { courseId: course._id, ...(manage ? {} : Lesson.playableFilter()) };
   const lessons = await Lesson.find(lessonFilter).sort({ order: 1, createdAt: 1 });
 
-  let enrollment = null;
   let progressByLesson = new Map();
-  if (user && user.role === ROLES.STUDENT) {
-    enrollment = await Enrollment.findOne({ userId: user._id, courseId: course._id, ...Enrollment.activeFilter() });
+  if (student) {
     const progress = await WatchProgress.find({ userId: user._id, courseId: course._id });
     progressByLesson = new Map(progress.map((p) => [String(p.lessonId), p]));
   }
@@ -218,10 +221,10 @@ export async function courseStats(id, user) {
   };
 }
 
-/** Recomputes lessonsCount/totalDurationSec from ready lessons (the worker does the same after a transcode). */
+/** Recomputes lessonsCount/totalDurationSec from playable lessons (the worker does the same after a transcode). */
 export async function refreshCourseStats(courseId) {
   const [agg] = await Lesson.aggregate([
-    { $match: { courseId: new mongoose.Types.ObjectId(String(courseId)), status: LESSON_STATUS.READY } },
+    { $match: { courseId: new mongoose.Types.ObjectId(String(courseId)), ...Lesson.playableFilter() } },
     { $group: { _id: null, count: { $sum: 1 }, duration: { $sum: { $ifNull: ['$video.durationSec', 0] } } } },
   ]);
   await Course.updateOne(

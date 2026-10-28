@@ -1,10 +1,14 @@
 import { useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ROLES } from '@lp/shared';
 import { signOut } from '../../api/session';
 import { Avatar, Badge, Button, Card, ErrorView, Icon, Loading, ScreenTitle, T } from '../../components/ui';
-import { useMe } from '../../hooks/queries';
+import { useAppConfig, useMe } from '../../hooks/queries';
+import { openSupport, supportUrl } from '../../lib/support';
 import { colors, radius, spacing } from '../../theme';
 
 const PLATFORM = {
@@ -29,6 +33,7 @@ function lastSeen(iso) {
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const { data, error, isPending, isRefetching, refetch } = useMe();
+  const { data: config } = useAppConfig();
   const [signingOut, setSigningOut] = useState(false);
 
   function confirmLogout() {
@@ -106,12 +111,37 @@ export default function AccountScreen() {
         <View style={styles.hint}>
           <Icon name="info" size={18} style={styles.hintIcon} />
           <T size={13} color={colors.muted} style={styles.hintText}>
-            غيّرت هاتفك؟ تواصل مع الإدارة لإزالة الجهاز القديم من حسابك.
+            غيّرت هاتفك؟ سجّل الدخول من الهاتف الجديد وسيُعرض عليك استبدال الجهاز الأقدم.
           </T>
         </View>
       </View>
 
+      <View style={styles.section}>
+        <T weight="bold" size={16}>
+          الحساب والمساعدة
+        </T>
+        <Card>
+          <Row icon="lock" label="تغيير كلمة المرور" onPress={() => router.push('/change-password')} />
+          {supportUrl(config) ? (
+            <Row icon="message-circle" label="مراسلة الدعم" divider onPress={() => openSupport(config)} />
+          ) : null}
+          {config ? (
+            <>
+              <Row icon="shield" label="سياسة الخصوصية" divider onPress={() => WebBrowser.openBrowserAsync(config.privacyUrl)} />
+              <Row icon="file-text" label="شروط الاستخدام" divider onPress={() => WebBrowser.openBrowserAsync(config.termsUrl)} />
+            </>
+          ) : null}
+        </Card>
+      </View>
+
       <Button title="تسجيل الخروج" icon="log-out" variant="danger" onPress={confirmLogout} loading={signingOut} />
+      {user.role === ROLES.STUDENT ? (
+        <Pressable accessibilityRole="button" onPress={() => router.push('/delete-account')} hitSlop={8} style={styles.delete}>
+          <T weight="semibold" size={14} color={colors.danger}>
+            حذف الحساب نهائياً
+          </T>
+        </Pressable>
+      ) : null}
       <T size={12} color={colors.muted} style={styles.version}>
         الإصدار {Constants.expoConfig?.version || ''}
       </T>
@@ -119,8 +149,27 @@ export default function AccountScreen() {
   );
 }
 
+function Row({ icon, label, onPress, divider }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, divider && styles.divider, pressed && styles.pressed]}
+    >
+      <Icon name={icon} size={20} color={colors.primary} />
+      <T weight="semibold" size={14} style={styles.flexFill}>
+        {label}
+      </T>
+      <Icon name="chevron-left" size={18} />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.bg },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, minHeight: 52 },
+  pressed: { opacity: 0.7 },
+  delete: { alignSelf: 'center', paddingVertical: spacing.sm },
   flexFill: { flex: 1, gap: 4 },
   container: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.xl },
   profile: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 },
