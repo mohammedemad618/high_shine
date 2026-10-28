@@ -87,8 +87,9 @@ export function refreshAccessToken() {
 }
 
 /**
- * JSON request against the API. `auth` (default true) attaches the access token, refreshes it once on
- * TOKEN_EXPIRED and logs out on DEVICE_REVOKED / REFRESH_INVALID.
+ * JSON request against the API. `auth` (default true) attaches the access token, refreshes it once on any 401
+ * (expired, or no longer accepted, e.g. after a key change) and logs out on DEVICE_REVOKED / REFRESH_INVALID or
+ * when the refresh itself is refused, so the app never stays stuck on a dead session.
  */
 export async function api(path, { auth = true, ...options } = {}) {
   if (!auth) return send(path, options);
@@ -96,7 +97,7 @@ export async function api(path, { auth = true, ...options } = {}) {
     try {
       return await send(path, { ...options, token: useAuth.getState().accessToken });
     } catch (err) {
-      if (err.status !== 401 || err.code !== ERROR_CODES.TOKEN_EXPIRED) throw err;
+      if (err.status !== 401) throw err;
       const token = await refreshAccessToken();
       return await send(path, { ...options, token });
     }
