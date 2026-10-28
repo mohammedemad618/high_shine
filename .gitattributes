@@ -1,0 +1,5 @@
+# Linux containers run these files: keep LF line endings everywhere.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary

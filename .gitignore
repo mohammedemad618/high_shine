@@ -1,0 +1,12 @@
+node_modules/
+.env
+infra/.env
+dist/
+.next/
+.expo/
+coverage/
+*.log
+media-dev/
+apps/mobile/android/
+apps/mobile/ios/
+.idea/

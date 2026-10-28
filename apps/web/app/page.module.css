@@ -1,0 +1,48 @@
+.hero {
+  padding-block: 3rem 2.5rem;
+  background: linear-gradient(160deg, var(--primary-soft), transparent 70%);
+  border-bottom: 1px solid var(--border);
+}
+
+.heroTitle {
+  font-size: clamp(1.6rem, 4vw, 2.3rem);
+}
+
+.heroText {
+  margin: 0 0 1.5rem;
+  max-width: 40rem;
+  color: var(--text-muted);
+}
+
+.search {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 36rem;
+}
+
+.listHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.listTitle {
+  font-size: 1.3rem;
+  margin: 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1.25rem;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 2rem;
+}

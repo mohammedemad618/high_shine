@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "المحاضرات",
+    "slug": "lectures-student",
+    "scheme": "lectures",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "platforms": ["ios", "android"],
+    "ios": {
+      "bundleIdentifier": "com.lectures.student",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.lectures.student",
+      "allowBackup": false
+    },
+    "plugins": [
+      ["expo-router", { "root": "./src/app" }],
+      "expo-status-bar",
+      "expo-splash-screen",
+      "expo-secure-store",
+      ["expo-video", { "supportsBackgroundPlayback": false, "supportsPictureInPicture": false }],
+      "expo-web-browser",
+      ["expo-localization", { "supportsRTL": true, "forcesRTL": true }],
+      ["expo-screen-orientation", { "initialOrientation": "PORTRAIT_UP" }],
+      "expo-font"
+    ],
+    "extra": {
+      "supportsRTL": true,
+      "forcesRTL": true
+    }
+  }
+}

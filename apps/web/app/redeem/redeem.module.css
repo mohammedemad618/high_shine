@@ -1,0 +1,53 @@
+.wrap {
+  display: grid;
+  place-items: center;
+  padding-block: 3rem;
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  padding: 2rem 1.75rem;
+  display: grid;
+  gap: 0.9rem;
+  text-align: center;
+}
+
+.card p {
+  margin: 0;
+}
+
+.card form {
+  text-align: start;
+}
+
+.title {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+.codeInput {
+  font-size: 1.25rem;
+  letter-spacing: 0.12em;
+  text-align: center !important;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+
+.successIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-inline: auto;
+  border-radius: 50%;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.courseName {
+  font-size: 1.15rem;
+  font-weight: 700;
+}

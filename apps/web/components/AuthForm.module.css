@@ -1,0 +1,31 @@
+.wrap {
+  display: grid;
+  place-items: center;
+  padding-block: 3rem;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  padding: 2rem 1.75rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.title {
+  font-size: 1.45rem;
+  margin: 0;
+  text-align: center;
+}
+
+.note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.switch {
+  margin: 0;
+  text-align: center;
+  font-size: 0.95rem;
+}

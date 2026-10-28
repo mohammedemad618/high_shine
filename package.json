@@ -1,0 +1,24 @@
+{
+  "name": "lecture-platform",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/api",
+    "apps/worker",
+    "apps/admin",
+    "apps/web"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:api": "npm run dev -w apps/api",
+    "dev:worker": "npm run dev -w apps/worker",
+    "dev:admin": "npm run dev -w apps/admin",
+    "dev:web": "npm run dev -w apps/web",
+    "test": "npm test -w apps/api && npm test -w apps/worker",
+    "create-admin": "node infra/scripts/create-admin.js"
+  }
+}

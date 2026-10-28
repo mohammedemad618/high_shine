@@ -1,0 +1,58 @@
+# Serves the heavy files straight from disk. Segments and attachments need a link signed by the API
+# (secure_link: md5 over expiry + path + secret). Playlists and keys are never served from here.
+
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  http2 on;
+  server_name ${MEDIA_DOMAIN};
+
+  ssl_certificate     /etc/letsencrypt/live/lectures/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/lectures/privkey.pem;
+
+  root /srv/media;
+  sendfile on;
+  tcp_nopush on;
+  aio threads;
+
+  location /hls/ {
+    secure_link $arg_md5,$arg_expires;
+    secure_link_md5 "$secure_link_expires$uri ${SECURE_LINK_SECRET}";
+    if ($secure_link = "") { return 403; }
+    if ($secure_link = "0") { return 410; }
+
+    # Only encrypted .ts segments; playlists are rewritten per student by the API.
+    location ~ \.m3u8$ { return 403; }
+
+    types { video/mp2t ts; }
+    default_type application/octet-stream;
+    add_header Access-Control-Allow-Origin "*" always;
+    add_header Cache-Control "private, max-age=14400" always;
+  }
+
+  location /attachments/ {
+    secure_link $arg_md5,$arg_expires;
+    secure_link_md5 "$secure_link_expires$uri ${SECURE_LINK_SECRET}";
+    if ($secure_link = "") { return 403; }
+    if ($secure_link = "0") { return 410; }
+
+    types { application/pdf pdf; }
+    add_header Access-Control-Allow-Origin "*" always;
+    add_header Cache-Control "private, max-age=3600" always;
+  }
+
+  # Thumbnails and course covers are public.
+  location /thumbs/ {
+    add_header Access-Control-Allow-Origin "*" always;
+    expires 7d;
+  }
+  location /covers/ {
+    add_header Access-Control-Allow-Origin "*" always;
+    expires 7d;
+  }
+
+  # uploads/ (raw source files) and anything else: never served.
+  location / {
+    return 404;
+  }
+}

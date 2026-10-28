@@ -1,0 +1,31 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "start",
+        "-w",
+        "apps/web"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "admin-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "preview",
+        "-w",
+        "apps/admin",
+        "--",
+        "--port",
+        "4174",
+        "--strictPort"
+      ],
+      "port": 4174
+    }
+  ]
+}

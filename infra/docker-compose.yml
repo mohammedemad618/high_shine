@@ -1,0 +1,168 @@
+# Run from the infra/ folder:  docker compose up -d --build
+# Only Nginx publishes ports. MongoDB and Redis have NO `ports:` on purpose: Docker bypasses ufw for
+# published ports, so publishing them would expose them to the internet.
+
+name: lectures
+
+x-node-env: &node-env
+  env_file: .env
+  environment:
+    NODE_ENV: production
+    MEDIA_ROOT: /srv/media
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+services:
+  mongo:
+    image: mongo:8.0.12
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/opt/mongo/entrypoint.sh"]
+    command: ["--replSet", "rs0", "--keyFile", "/data/keyfile/mongo.key", "--bind_ip_all"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_DB: ${MONGO_DB}
+      MONGO_APP_USER: ${MONGO_APP_USER}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
+      MONGO_REPLICA_KEY: ${MONGO_REPLICA_KEY}
+    volumes:
+      - mongo-data:/data/db
+      - mongo-keyfile:/data/keyfile
+      - ./mongo:/opt/mongo:ro
+      - ./mongo/init:/docker-entrypoint-initdb.d:ro
+    # Initiates the single-node replica set on first boot (transactions need a replica set).
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin /opt/mongo/healthcheck.js"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  redis:
+    image: redis:7.4.2-alpine
+    restart: unless-stopped
+    # appendonly: queued transcode jobs survive a restart. noeviction: BullMQ must never lose keys.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    <<: *node-env
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    expose: ["4000"]
+    volumes:
+      - ${MEDIA_HOST_DIR}:/srv/media
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  worker:
+    <<: *node-env
+    build:
+      context: ..
+      dockerfile: apps/worker/Dockerfile
+    volumes:
+      - ${MEDIA_HOST_DIR}:/srv/media
+    # Let a running transcode finish its current step on stop; unfinished jobs are retried by BullMQ.
+    stop_grace_period: 2m
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+    environment:
+      INTERNAL_API_URL: http://api:4000/api/v1
+    expose: ["3000"]
+    restart: unless-stopped
+    depends_on: [api]
+
+  admin:
+    build:
+      context: ..
+      dockerfile: apps/admin/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    expose: ["80"]
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+      MEDIA_DOMAIN: ${MEDIA_DOMAIN}
+      WEB_DOMAIN: ${WEB_DOMAIN}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN}
+      SECURE_LINK_SECRET: ${SECURE_LINK_SECRET}
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./nginx/entrypoint.d/40-reload-loop.sh:/docker-entrypoint.d/40-reload-loop.sh:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot:ro
+      # Read-only: Nginx serves segments, thumbnails and attachments. Keys are never on disk.
+      - ${MEDIA_HOST_DIR}:/srv/media:ro
+    depends_on: [api, web, admin]
+
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"]
+
+  # ---- Monitoring (phase 8): docker compose --profile monitoring up -d ----
+  # Bound to 127.0.0.1 only; open them through an SSH tunnel, e.g. ssh -L 3001:127.0.0.1:3001 -L 19999:127.0.0.1:19999 vps
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    profiles: [monitoring]
+    restart: unless-stopped
+    ports: ["127.0.0.1:3001:3001"]
+    volumes:
+      - uptime-kuma-data:/app/data
+
+  netdata:
+    image: netdata/netdata:stable
+    profiles: [monitoring]
+    restart: unless-stopped
+    pid: host
+    cap_add: [SYS_PTRACE, SYS_ADMIN]
+    security_opt: [apparmor:unconfined]
+    ports: ["127.0.0.1:19999:19999"]
+    volumes:
+      - netdata-config:/etc/netdata
+      - netdata-lib:/var/lib/netdata
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+volumes:
+  uptime-kuma-data:
+  netdata-config:
+  netdata-lib:
+  mongo-data:
+  mongo-keyfile:
+  redis-data:
+  letsencrypt:
+    name: lectures_letsencrypt
+  certbot-webroot:
+    name: lectures_certbot_webroot

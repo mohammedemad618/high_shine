@@ -1,0 +1,9 @@
+# Used by BuildKit for apps/web/Dockerfile (paths are relative to the build context = repo root).
+**/node_modules
+**/.next
+**/.env*
+.git
+apps/mobile
+apps/api/test
+infra
+docs

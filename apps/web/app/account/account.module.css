@@ -1,0 +1,66 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.block {
+  display: grid;
+  gap: 1rem;
+  padding: 1.4rem;
+}
+
+.heading {
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 1.25rem;
+  margin: 0;
+}
+
+.list dt {
+  color: var(--text-muted);
+}
+
+.list dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ltr {
+  text-align: right;
+  unicode-bidi: plaintext;
+}
+
+.devices {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.device {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.device strong {
+  margin-inline-end: 0.5rem;
+}
+
+.deviceDates {
+  display: grid;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
